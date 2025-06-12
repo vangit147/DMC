@@ -2,20 +2,18 @@
  ******************************************************************************
  * @file    main_task.c
  * @author  Gordon Li
- * @version V1.2
- * @date    2025-04-05 00:00:07 Saturday
- * @brief   主任务实现
+ * @version V1.13
+ * @date    2025-04-05
+ * @brief   主任务模块实现
  *
- * @note
- *          - 实现了系统初始化和任务调度
- *          - 包含传感器数据采集和处理
- *          - 支持多种工作模式切换
+ * @note    实现了系统的主要任务调度和功能控制
  ******************************************************************************
  */
 /************* Included files, Macros, Various and Declarations ***************/
 #include "main.h"
 #include "cpu.h"
 
+#include "mud_pulse.h"
 #include "main_task.h"
 #include "ie_task.h"
 #include "IS25LP032_flash.h"
@@ -29,10 +27,6 @@ static TaskHandle_t main_task_handle;
 
 #define EVENT_UART1_RX 0X10
 
-#define MUD_PULSE_PORT_LED PTE
-#define MUD_PULSE_PIN_LED 11
-#define MUD_PULSE_PORT PTA
-#define MUD_PULSE_PIN 13
 #define IS_TEMPERATURE_OFFSET 1
 #define IS_ROLL_PITCH 1
 #define OFFSET_LEN 8
@@ -42,26 +36,6 @@ extern interval_info_t interval_info;
 extern sensor_data_t sensor_data;    // 用于存储传感器数据
 extern inclination_hs_t inc_hs_data; // 倾角高边结构体变量
 extern adxl357_vibration_data_t vibration_data;
-
-// 泥浆脉冲
-#define MUD_PULSE_TIMER_HZ 100      // 泥浆脉冲定时器频率
-#define MUD_PULSE_PERIOD 120        // 脉冲周期，秒
-#define NO_VIBRATION_TIME 60        // 60s 表示振动停止时间
-static uint8_t pulser_double_stage; // 双脉冲阶段
-static uint8_t pulser_tx_request;   // 脉冲发送请求
-static uint32_t PULSE_GROUP_INTERVAL = 0;
-static uint32_t PULSE_SEND_DELAY = 0;
-static uint32_t RETRY_COUNT_BAK = 0;
-static uint32_t retry_count;
-static uint32_t no_vibration_period = NO_VIBRATION_TIME;
-static uint32_t pulser_tx_period_counter = MUD_PULSE_PERIOD; // 脉冲周期，秒
-static uint8_t lastMotionState = 0;                          // 保存上一次的振动状态
-static uint8_t send_count = 0;
-static int32_t pulser_tx_buffer[64];
-static uint32_t pulser_tx_buffer_len;
-static uint32_t pulser_curr_tx_index;
-static uint32_t pulser_current_duration;
-static uint8_t pulser_tx_started;
 
 // 串口
 static uint8_t UART1_rx_buffer[128];
@@ -121,108 +95,6 @@ void set_downhole(int val)
 {
     downhole = val;
 }
-
-/**
-  *******************************************************************************
-  * @Description: 启动泥浆脉冲
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.10.03 14:53:16 Tuesday
-  *******************************************************************************
-  */
-static int32_t pulser_start_tx(int32_t *data, uint32_t len)
-{
-    if (len == 0)
-        return -1;
-
-    __disable_irq();
-
-    pulser_tx_started = 1;
-    pulser_curr_tx_index = 0;
-    PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, 0);
-    PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, 0);
-    pulser_current_duration = pulser_tx_buffer[pulser_curr_tx_index];
-    // printf("Pusler 0, %d\r\n", pulser_current_duration);
-
-    __enable_irq();
-
-    return 0;
-}
-
-/**
-  *******************************************************************************
-  * @Description: 发送泥浆脉冲
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.10.03 14:40:53 Tuesday
-  *******************************************************************************
-  */
-static void update_mud_pulser_state(void)
-{
-    static uint8_t led;
-    static uint32_t counter;
-
-    if (pulser_tx_started == 0)
-        return;
-
-    counter++;
-    if (counter >= MUD_PULSE_TIMER_HZ / 10)
-    {
-        counter = 0;
-        led ^= 1;
-        PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, led);
-    }
-
-    /*当前脉冲未发送完毕*/
-    if (pulser_current_duration > 1)
-    {
-        pulser_current_duration--;
-        return;
-    }
-
-    // 发送下一个脉冲
-    pulser_curr_tx_index++;
-    pulser_current_duration = pulser_tx_buffer[pulser_curr_tx_index];
-
-    // 所有脉冲发送完毕
-    if (pulser_curr_tx_index == pulser_tx_buffer_len)
-    {
-        pulser_double_stage = 0;
-        pulser_curr_tx_index = 0;
-        pulser_current_duration = INT_MAX;
-        //        printf("pulser_tx_request=%d %d", pulser_tx_request,INT_MAX);
-        if (pulser_tx_request)
-        {
-            retry_count--;
-            if (retry_count == 0)
-                pulser_tx_request = 0;
-            else
-            {
-                pulser_curr_tx_index = 2;
-                pulser_current_duration = pulser_tx_buffer[pulser_curr_tx_index]; // 34秒
-            }
-            if (send_count != 0 && retry_count == 0)
-            {
-                //							延迟60s再发送下一次的retry_count组数据
-                pulser_tx_request = 1;
-                send_count--;
-                retry_count = RETRY_COUNT_BAK;
-                // 持续振动中，每组泥浆脉冲数据发送的时间间隔
-                pulser_tx_buffer[pulser_curr_tx_index] = (PULSE_GROUP_INTERVAL / 2) * MUD_PULSE_TIMER_HZ;
-                pulser_tx_buffer[pulser_curr_tx_index + 1] = (PULSE_GROUP_INTERVAL / 2) * MUD_PULSE_TIMER_HZ;
-            }
-        }
-    }
-    PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulser_curr_tx_index & 0x1);
-    // PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, pulser_curr_tx_index & 0x1);
-    // printf("Pusler %d, %d pulser_curr_tx_index=%d retry_count=%d pulser_tx_buffer_len=%d pulser_tx_request=%d\r\n", pulser_curr_tx_index & 0x1, pulser_current_duration, pulser_curr_tx_index, retry_count, pulser_tx_buffer_len, pulser_tx_request);
-}
 /**
   *******************************************************************************
   * @Description: 应用层钩子函数
@@ -252,7 +124,7 @@ void vApplicationTickHook(void)
   */
 static int32_t flextimer_mc1_isr(void)
 {
-    update_mud_pulser_state();
+    mud_pulse_timer_isr(&mud_pulse);
     return 0;
 }
 
@@ -297,7 +169,6 @@ static void lpuart1_rx_cb(uint32_t uartHandle, uint32_t data)
     {
         // xTimerChangePeriodFromISR(lpuart1_rx_timer, 50, 0);
     }
-
 }
 /**
   *******************************************************************************
@@ -503,6 +374,7 @@ static void on_send_debug_data_event(void)
     LPUART1_send((uint8_t*)&tail_flag, 4);
 #endif
 }
+
 /**
   *******************************************************************************
   * @Description: 定时器事件处理函数
@@ -522,9 +394,6 @@ static void on_100ms_timer_event(void)
     uint32_t timestamp;
     uint8_t rtc_data[8];
     struct tm time_data;
-    static float avg_F32_ie = 0.0f, avg_F32_temp = 0.0f, avg_F32_hs = 0.0f, avg_F32_36V = 0.0f;
-    static float F32_ie = INT_MAX, F32_temp = INT_MAX, F32_hs = INT_MAX, F32_36V = INT_MAX;
-    static uint8_t account = 0;
 
     // 计算时间戳
     PCA8565_on_timer_event();
@@ -561,142 +430,15 @@ static void on_100ms_timer_event(void)
         update_total_time_per_temp(sensor_data.t_C);
 
         // 更新泥浆脉冲数据
-        if (!pulser_double_stage)
+        if (!mud_pulse.state.double_stage)
         {
-            uint32_t index = 0;
-            float temp_voltage;
-            inclination_hs_t hs;
             uint8_t currentMotionState = 0;
 
             // 在震动时才发送泥浆脉冲
             if (get_vibrating_flag())
                 currentMotionState = 1;
 
-            // 只获取静态后30秒内井斜、温度、高边、电压数据的平均值
-            // 默认情况下，在每次振动前都会静止一分钟
-            if (currentMotionState == 0 && account < 30)
-            {
-                if (interval_info.good_inc_avg < F32_ie)
-                    F32_ie = interval_info.good_inc_avg;
-                if (sensor_data.t_C < F32_temp)
-                    F32_temp = sensor_data.t_C;
-                get_inc_hs(&hs);
-                if (hs.hs < F32_hs)
-                    F32_hs = hs.hs;
-                temp_voltage = get_36V_voltage();
-                if (temp_voltage < F32_36V)
-                    F32_36V = temp_voltage;
-                avg_F32_ie = (avg_F32_ie * account + F32_ie) / (account + 1);
-                avg_F32_temp = (avg_F32_temp * account + F32_temp) / (account + 1);
-                avg_F32_hs = (avg_F32_hs * account + F32_hs) / (account + 1);
-                avg_F32_36V = (avg_F32_36V * account + F32_36V) / (account + 1);
-                account++;
-            }
-
-            // 检查发送周期
-            if (pulser_tx_period_counter)
-                pulser_tx_period_counter--;
-            else
-            {
-                // 默认情况下，在每次振动前都会静止一分钟，所以currentMotionState为1时，account只能为0
-                if (currentMotionState == 0 && account < 30)
-                    pulser_tx_period_counter = 30 - account;
-                else
-                {
-                    // 1. currentMotionState==0 && account == 30
-                    // 2. currentMotionState==1 && account == 0
-                    pulser_tx_period_counter = MUD_PULSE_PERIOD;
-                    currentMotionState = 1;
-                }
-            }
-
-            // 1. 从无振动到有振动，发送一次数据，一次连发三组数据
-            // 2. 检测到振动后，一直在振动，发送三次数据，每次每隔1分钟，每次连发三组数据
-            __disable_irq();
-            if (currentMotionState)
-            {
-                //! pulser_tx_request 可以过滤掉震动后频繁的静止与震动
-                if (!lastMotionState && !pulser_tx_request)
-                {
-                    // 持续振动中，只会发送三组泥浆脉冲数据
-                    send_count = 3;
-                    // 一组泥浆脉冲数据发送的次数
-                    retry_count = RETRY_COUNT_BAK;
-                    // 振动后，连续的静止时间。若振动后连续静止的时间超过此数据，则认为目前静止了
-                    no_vibration_period = NO_VIBRATION_TIME;
-                    // 开泵后等待泥浆脉冲压强准备好的时间
-                    pulser_tx_buffer[index++] = (PULSE_SEND_DELAY / 2) * MUD_PULSE_TIMER_HZ;
-                    pulser_tx_buffer[index++] = (PULSE_SEND_DELAY / 2) * MUD_PULSE_TIMER_HZ;
-                    pulser_current_duration = pulser_tx_buffer[index - 2];
-                    pulser_tx_request = 1;
-                    if (account == 30)
-                    {
-                        pulser_tx_buffer[index] = 34 * MUD_PULSE_TIMER_HZ;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-                        pulser_tx_buffer[index] = 34 * MUD_PULSE_TIMER_HZ;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-
-                        // 井斜
-                        if (avg_F32_ie < 0.0f)
-                            avg_F32_ie = 0;
-                        if (avg_F32_temp > 180.0f)
-                            avg_F32_temp = 180.0f;
-                        pulser_tx_buffer[index] = 23 * MUD_PULSE_TIMER_HZ + (avg_F32_ie * MUD_PULSE_TIMER_HZ) / 2;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-
-                        // 温度
-                        if (avg_F32_temp < 0.0f)
-                            avg_F32_temp = 0.0f;
-                        if (avg_F32_temp > 180.0f)
-                            avg_F32_temp = 180.0f;
-                        pulser_tx_buffer[index] = 19 * MUD_PULSE_TIMER_HZ + 8.0f * MUD_PULSE_TIMER_HZ * avg_F32_temp / 180.0f + 5;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-
-                        // 高边
-                        pulser_tx_buffer[index] = 19 * MUD_PULSE_TIMER_HZ + 8.0f * MUD_PULSE_TIMER_HZ * (360.0f - avg_F32_hs) / 360.0f;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-
-                        // 电压，脉冲宽度每秒对应10V.
-                        if (avg_F32_36V < 20.0f)
-                            avg_F32_36V = 20.0f;
-                        if (avg_F32_36V > 36.0f)
-                            avg_F32_36V = 36.0f;
-                        pulser_tx_buffer[index] = 19 * MUD_PULSE_TIMER_HZ + MUD_PULSE_TIMER_HZ * (avg_F32_36V - 20.0f) / 2.0f + 5;
-                        //                        printf("pulser_tx_buffer[%d]=%d\r\n", index, pulser_tx_buffer[index]);
-                        index += 2;
-
-                        pulser_tx_buffer_len = index;
-
-                        account = 0;
-                        F32_ie = INT_MAX;
-                        F32_temp = INT_MAX;
-                        F32_hs = INT_MAX;
-                        F32_36V = INT_MAX;
-                        avg_F32_ie = 0.0f;
-                        avg_F32_temp = 0.0f;
-                        avg_F32_hs = 0.0f;
-                        avg_F32_36V = 0.0f;
-                    }
-                }
-            }
-            else
-            {
-                if (!lastMotionState)
-                {
-                    // 在当连续静止一分钟时，则认为已经处于非振动状态
-                    if (no_vibration_period == 0)
-                        send_count = 0;
-                    else
-                        no_vibration_period--;
-                }
-            }
-            lastMotionState = currentMotionState;
-            __enable_irq();
+            mud_pulse_update_data(&mud_pulse, &interval_info, &sensor_data, currentMotionState);
         }
 
         // 保存LOG
@@ -704,9 +446,8 @@ static void on_100ms_timer_event(void)
             log_period--;
         if (log_period == 0)
         {
-            log_t log = {0}; 
+            log_t log = {0};
             log_period = algorithm_setting.log_period_time;
-
 
             // 调用get_sensor_data函数获取传感器数据
             get_sensor_data(&sensor_data);
@@ -741,18 +482,18 @@ static void on_100ms_timer_event(void)
             // 将inc_hs_data中的数据赋值给log结构体
             log.hs = inc_hs_data.hs;
 
-            //log.roll = sum_roll / 1000;
-            //log.diff_t = 0;
-          
+            // log.roll = sum_roll / 1000;
+            // log.diff_t = 0;
+
             // 从interval_info_data中获取虚拟半径数据
             log.virtual_x_radius_min = interval_info.radius_x_min;
             log.virtual_x_radius_max = interval_info.radius_x_max;
-            //log.virtual_x_radius_avg = 0; // 如果interval_info中没有平均值，则设为0
-            
+            // log.virtual_x_radius_avg = 0; // 如果interval_info中没有平均值，则设为0
+
             log.virtual_y_radius_min = interval_info.radius_y_min;
             log.virtual_y_radius_max = interval_info.radius_y_max;
-            //log.virtual_y_radius_avg = 0; // 如果interval_info中没有平均值，则设为0
-            
+            // log.virtual_y_radius_avg = 0; // 如果interval_info中没有平均值，则设为0
+
             // 从interval_info_data中获取标准差数据
             log.gz_dps_sdv_max = interval_info.sdv_gyro_z_max;
             log.gz_dps_sdv_min = interval_info.sdv_gyro_z_min;
@@ -771,15 +512,15 @@ static void on_100ms_timer_event(void)
             log.s_f32_36V = get_36V_voltage();
             log.max_peace_time_max = interval_info.peace_time_max;
             log.peace_time_count = interval_info.peace_time_count;
-           // log.max_peace_time_min = 0; // 如果interval_info中没有最小值，则设为0
-            
+            // log.max_peace_time_min = 0; // 如果interval_info中没有最小值，则设为0
+
             // 从interval_info_data中获取数据质量等级统计
             log.c0_num_max = interval_info.c0_num_count;
-            //log.c0_num_min = 0; // 如果interval_info中没有最小值，则设为0
+            // log.c0_num_min = 0; // 如果interval_info中没有最小值，则设为0
             log.c1_num_max = interval_info.c1_num_count;
-            //log.c1_num_min = 0;
+            // log.c1_num_min = 0;
             log.c2_num_max = interval_info.c2_num_count;
-            //log.c2_num_min = 0;
+            // log.c2_num_min = 0;
 
             if (log.inc6_avg > 8)
             {
@@ -859,16 +600,16 @@ void algorithm_setting_for_Calibration()
     // 设置虚拟半径限制
     algorithm_setting.xr_limit = 0.0015f;
     algorithm_setting.yr_limit = 0.015f;
-		is25pl032_flash_set_param(0,0,algorithm_setting.xr_limit,algorithm_setting.yr_limit,0);
-		
+    is25pl032_flash_set_param(0, 0, algorithm_setting.xr_limit, algorithm_setting.yr_limit, 0);
+
     // 设置日志周期60s
     algorithm_setting.log_period_time = 60;
-		is25pl032_flash_set_log_period(algorithm_setting.log_period_time);
+    is25pl032_flash_set_log_period(algorithm_setting.log_period_time);
 
     // 设置稳定时间阈值
     algorithm_setting.max_peace_time_threshold = 5;
 
-    double imu[9]={0,0,0,1,0,0,1,0,1};
+    double imu[9] = {0, 0, 0, 1, 0, 0, 1, 0, 1};
     /* 加速度计MS矩阵偏差设置 */
     algorithm_setting.ms_xx = imu[3]; // X-X轴MS矩阵系数
     algorithm_setting.ms_xy = imu[4]; // X-Y轴MS矩阵系数
@@ -876,74 +617,77 @@ void algorithm_setting_for_Calibration()
     algorithm_setting.ms_yy = imu[6]; // Y-Y轴MS矩阵系数
     algorithm_setting.ms_yz = imu[7]; // Y-Z轴MS矩阵系数
     algorithm_setting.ms_zz = imu[8]; // Z-Z轴MS矩阵系数
-		
+
     /* 加速度计零偏设置 */
     algorithm_setting.ax_bias = imu[0]; // X轴加速度计零偏，单位：g
     algorithm_setting.ay_bias = imu[1]; // Y轴加速度计零偏，单位：g
     algorithm_setting.az_bias = imu[2]; // Z轴加速度计零偏，单位：g
     is25pl032_flash_set_imu(imu);
-		
+
     /* 加速度计装配误差设置 */
     algorithm_setting.acc_x_offset = 0.0f; // X轴加速度计装配误差，单位：g
     algorithm_setting.acc_y_offset = 0.0f; // Y轴加速度计装配误差，单位：g
     algorithm_setting.acc_z_offset = 0.0f; // Z轴加速度计装配误差，单位：g
-		is25pl032_flash_set_offset(0,algorithm_setting.acc_x_offset);
-		is25pl032_flash_set_offset(1,algorithm_setting.acc_y_offset);
+    is25pl032_flash_set_offset(0, algorithm_setting.acc_x_offset);
+    is25pl032_flash_set_offset(1, algorithm_setting.acc_y_offset);
 
     // 设置多项式拟合参数
     memset(algorithm_setting.degrees_acc, 0, sizeof(algorithm_setting.degrees_acc));
-		is25pl032_flash_set_degree(0,algorithm_setting.degrees_acc,5);
-		is25pl032_flash_set_degree(1,algorithm_setting.degrees_acc+6,5);
-		is25pl032_flash_set_degree(2,algorithm_setting.degrees_acc+6,5);
+    is25pl032_flash_set_degree(0, algorithm_setting.degrees_acc, 5);
+    is25pl032_flash_set_degree(1, algorithm_setting.degrees_acc + 6, 5);
+    is25pl032_flash_set_degree(2, algorithm_setting.degrees_acc + 6, 5);
 
     // 设置陀螺仪零偏和scale
-    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680) {
+    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
+    {
         // IAM-20680HT陀螺仪设置
         algorithm_setting.gx_bias = get_gx_offset();
         algorithm_setting.gy_bias = get_gy_offset();
         algorithm_setting.gz_bias = get_gz_offset();
-        algorithm_setting.gx_scale = 4000.0f / 65536.0f;  // ±2000 dps量程
+        algorithm_setting.gx_scale = 4000.0f / 65536.0f; // ±2000 dps量程
         algorithm_setting.gy_scale = 4000.0f / 65536.0f;
         algorithm_setting.gz_scale = 4000.0f / 65536.0f;
-    } else {
+    }
+    else
+    {
         // ADXRS645陀螺仪设置
         algorithm_setting.gx_bias = 0.0f;
         algorithm_setting.gy_bias = 0.0f;
-        algorithm_setting.gz_bias = 4023000.0f;  // 零偏值
-        algorithm_setting.gx_scale = 1.0f / 16110.0f;  // scale系数
+        algorithm_setting.gz_bias = 4023000.0f;       // 零偏值
+        algorithm_setting.gx_scale = 1.0f / 16110.0f; // scale系数
         algorithm_setting.gy_scale = 1.0f / 16110.0f;
         algorithm_setting.gz_scale = 1.0f / 16110.0f;
     }
-		
+
     // 设置多项式拟合参数
     memset(algorithm_setting.degrees_gyro, 0, sizeof(algorithm_setting.degrees_gyro));
-		is25pl032_flash_set_degree(3,algorithm_setting.degrees_gyro,5);
-		is25pl032_flash_set_degree(4,algorithm_setting.degrees_gyro+6,5);
-		is25pl032_flash_set_degree(5,algorithm_setting.degrees_gyro+6,5);
-		
+    is25pl032_flash_set_degree(3, algorithm_setting.degrees_gyro, 5);
+    is25pl032_flash_set_degree(4, algorithm_setting.degrees_gyro + 6, 5);
+    is25pl032_flash_set_degree(5, algorithm_setting.degrees_gyro + 6, 5);
+
     // 设置温度补偿范围
     algorithm_setting.t_comp_lower_limit = -20.0f;
-		set_temp_comp_lower_limit(algorithm_setting.t_comp_lower_limit);
+    set_temp_comp_lower_limit(algorithm_setting.t_comp_lower_limit);
     algorithm_setting.t_comp_upper_limit = 150.0f;
-		set_temp_comp_upper_limit(algorithm_setting.t_comp_upper_limit);
-		
+    set_temp_comp_upper_limit(algorithm_setting.t_comp_upper_limit);
+
     if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680)
     { // IAM-20680HT:(sensor_signal.t_raw - 0) / 326.8f + 25.0f
         algorithm_setting.t_scale = 0.003059976f;
         algorithm_setting.t_intercept = 25.0f;
     }
     else if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_MINIQ)
-    {//mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
+    { // mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
         algorithm_setting.t_scale = 0.0003804576f;
         algorithm_setting.t_intercept = -276.35f;
     }
-    else { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
+    else
+    { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
         algorithm_setting.t_scale = -0.000164327854f;
-//        algorithm_setting.t_intercept = 351.64f;
-        algorithm_setting.t_intercept=321.9705002;
+        //        algorithm_setting.t_intercept = 351.64f;
+        algorithm_setting.t_intercept = 321.9705002;
     }
 }
-
 
 // 加载配置
 void load_algorithm_setting_from_flash(void)
@@ -954,14 +698,14 @@ void load_algorithm_setting_from_flash(void)
 
     // 陀螺仪类型
     algorithm_setting.gyro_sensor_type = get_gyro_sensor_type();
-		
+
     // 从Flash中读取虚拟半径限制参数
     uint8_t accfir, gyrofir;
     double gain;
     double xr_limit, yr_limit;
     is25pl032_flash_get_param(&accfir, &gyrofir, &xr_limit, &yr_limit, &gain);
-    algorithm_setting.xr_limit =  xr_limit;
-		algorithm_setting.xr_limit =  yr_limit;
+    algorithm_setting.xr_limit = xr_limit;
+    algorithm_setting.xr_limit = yr_limit;
     // 确保虚拟半径限制参数有效
     if (algorithm_setting.yr_limit <= 0)
     {
@@ -971,7 +715,7 @@ void load_algorithm_setting_from_flash(void)
     {
         algorithm_setting.xr_limit = 0.01f; // 默认X轴限制为0.002米，按照g要缩小10被
     }
-		
+
     // 确保日志周期默认至少为60秒
     algorithm_setting.log_period_time = is25pl032_flash_get_log_period();
     /* 如果Flash中没有参数，使用默认值 */
@@ -982,7 +726,7 @@ void load_algorithm_setting_from_flash(void)
 
     /* 稳定时间阈值设置 */
     algorithm_setting.max_peace_time_threshold = 5; // 稳定时间阈值，默认值为5
-		
+
     double imu[9];
     is25pl032_flash_get_imu(imu);
     /* 加速度计MS矩阵偏差设置 */
@@ -992,36 +736,39 @@ void load_algorithm_setting_from_flash(void)
     algorithm_setting.ms_yy = imu[6]; // Y-Y轴MS矩阵系数
     algorithm_setting.ms_yz = imu[7]; // Y-Z轴MS矩阵系数
     algorithm_setting.ms_zz = imu[8]; // Z-Z轴MS矩阵系数
-		
+
     /* 加速度计零偏设置 */
     algorithm_setting.ax_bias = imu[0]; // X轴加速度计零偏，单位：g
     algorithm_setting.ay_bias = imu[1]; // Y轴加速度计零偏，单位：g
     algorithm_setting.az_bias = imu[2]; // Z轴加速度计零偏，单位：g
-		
+
     /* 加速度计装配误差设置 */
     algorithm_setting.acc_x_offset = is25pl032_flash_get_offset(0); // X轴加速度计装配误差，单位：g
     algorithm_setting.acc_y_offset = is25pl032_flash_get_offset(1); // Y轴加速度计装配误差，单位：g
     algorithm_setting.acc_z_offset = 0.0f;                          // Z轴加速度计装配误差，单位：g
-		
+
     // 设置陀螺仪零偏和scale
-    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680) {
+    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
+    {
         // IAM-20680HT陀螺仪设置
         algorithm_setting.gx_bias = get_gx_offset();
         algorithm_setting.gy_bias = get_gy_offset();
         algorithm_setting.gz_bias = get_gz_offset();
-        algorithm_setting.gx_scale = 4000.0f / 65536.0f;  // ±2000 dps量程
+        algorithm_setting.gx_scale = 4000.0f / 65536.0f; // ±2000 dps量程
         algorithm_setting.gy_scale = 4000.0f / 65536.0f;
         algorithm_setting.gz_scale = 4000.0f / 65536.0f;
-    } else {
+    }
+    else
+    {
         // ADXRS645陀螺仪设置
         algorithm_setting.gx_bias = 0.0f;
         algorithm_setting.gy_bias = 0.0f;
-        algorithm_setting.gz_bias = 4023000.0f;  // 零偏值
-        algorithm_setting.gx_scale = 1.0f / 16110.0f;  // scale系数
+        algorithm_setting.gz_bias = 4023000.0f;       // 零偏值
+        algorithm_setting.gx_scale = 1.0f / 16110.0f; // scale系数
         algorithm_setting.gy_scale = 1.0f / 16110.0f;
         algorithm_setting.gz_scale = 1.0f / 16110.0f;
     }
-		
+
     /* 多项式拟合参数初始化 */
     // 读取所有加速度计和陀螺仪的五阶拟合系数 (共6个轴，每个轴6个系数)
     double all_coefficients[36];
@@ -1034,7 +781,7 @@ void load_algorithm_setting_from_flash(void)
     memcpy(algorithm_setting.degrees_acc, all_coefficients, 3 * 6 * sizeof(double));
     // 陀螺仪系数 (XYZ轴)
     memcpy(algorithm_setting.degrees_gyro, all_coefficients + 3 * 6, 3 * 6 * sizeof(double));
-		
+
     /* 温度补偿范围设置 */
     algorithm_setting.t_comp_lower_limit = get_temp_comp_lower_limit(); // 温度补偿下限，默认值为-20°C
     algorithm_setting.t_comp_upper_limit = get_temp_comp_upper_limit(); // 温度补偿上限，默认值为150°C
@@ -1045,13 +792,14 @@ void load_algorithm_setting_from_flash(void)
         algorithm_setting.t_intercept = 25.0f;
     }
     else if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_MINIQ)
-    {//mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
+    { // mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
         algorithm_setting.t_scale = 0.0003804576f;
         algorithm_setting.t_intercept = -276.35f;
     }
-    else { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
+    else
+    { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
         algorithm_setting.t_scale = -0.000164327854f;
-        algorithm_setting.t_intercept=321.9705002;
+        algorithm_setting.t_intercept = 321.9705002;
     }
 
 #if 0
@@ -1071,13 +819,13 @@ void load_algorithm_setting_from_flash(void)
 }
 
 /**
-  *******************************************************************************
-  * @Description: 测试用配置设置函数：misc_config中的数据硬编码写入algorithm_setting
-  * @Parameters : 无
-  * @RetValue   : 无
-  * @Note       : 用于测试，将misc_config中的数据硬编码写入algorithm_setting
-  *******************************************************************************
-  */
+ *******************************************************************************
+ * @Description: 测试用配置设置函数：misc_config中的数据硬编码写入algorithm_setting
+ * @Parameters : 无
+ * @RetValue   : 无
+ * @Note       : 用于测试，将misc_config中的数据硬编码写入algorithm_setting
+ *******************************************************************************
+ */
 static void setting_for_test(void)
 {
     // 设置传感器类型
@@ -1087,7 +835,7 @@ static void setting_for_test(void)
     // 设置虚拟半径限制
     algorithm_setting.xr_limit = 0.00015f;
     algorithm_setting.yr_limit = 0.0015f;
-	
+
     // 设置日志周期60s
     algorithm_setting.log_period_time = 60;
 
@@ -1101,7 +849,7 @@ static void setting_for_test(void)
     algorithm_setting.ms_yy = 5.5587055e-7;
     algorithm_setting.ms_yz = 0.0f;
     algorithm_setting.ms_zz = 5.5587055e-7;
-		
+
     // 设置加速度计零偏
     algorithm_setting.ax_bias = 0.0f;
     algorithm_setting.ay_bias = 0.0f;
@@ -1113,20 +861,23 @@ static void setting_for_test(void)
     algorithm_setting.acc_z_offset = 0.0f;
 
     // 设置陀螺仪零偏和scale
-    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680) {
+    if (algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
+    {
         // IAM-20680HT陀螺仪设置
         algorithm_setting.gx_bias = 0.0f;
         algorithm_setting.gy_bias = 0.0f;
         algorithm_setting.gz_bias = 0.0f;
-        algorithm_setting.gx_scale = 4000.0f / 65536.0f;  // ±2000 dps量程
+        algorithm_setting.gx_scale = 4000.0f / 65536.0f; // ±2000 dps量程
         algorithm_setting.gy_scale = 4000.0f / 65536.0f;
         algorithm_setting.gz_scale = 4000.0f / 65536.0f;
-    } else {
+    }
+    else
+    {
         // ADXRS645陀螺仪设置
         algorithm_setting.gx_bias = 0.0f;
         algorithm_setting.gy_bias = 0.0f;
-        algorithm_setting.gz_bias = 4023000.0f;  // 零偏值
-        algorithm_setting.gx_scale = 1.0f / 16110.0f;  // scale系数
+        algorithm_setting.gz_bias = 4023000.0f;       // 零偏值
+        algorithm_setting.gx_scale = 1.0f / 16110.0f; // scale系数
         algorithm_setting.gy_scale = 1.0f / 16110.0f;
         algorithm_setting.gz_scale = 1.0f / 16110.0f;
     }
@@ -1137,24 +888,24 @@ static void setting_for_test(void)
     // 设置温度补偿范围
     algorithm_setting.t_comp_lower_limit = -20.0f;
     algorithm_setting.t_comp_upper_limit = 150.0f;
-		
+
     if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680)
     { // IAM-20680HT:(sensor_signal.t_raw - 0) / 326.8f + 25.0f
         algorithm_setting.t_scale = 0.003059976f;
         algorithm_setting.t_intercept = 25.0f;
     }
     else if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_MINIQ)
-    {//mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
+    { // mini-Q: (sensor_signal.t_raw * 2500.0 / 8388608) * 1.27 * 1.0052 - 276.35;
         algorithm_setting.t_scale = 0.0003804576f;
         algorithm_setting.t_intercept = -276.35f;
     }
-    else { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
+    else
+    { // VS1005或其他型号: (sensor_signal.t_raw * (-0.00015421537061f) +330.f) * 1.06557377f;
         algorithm_setting.t_scale = -0.000164327854f;
-//        algorithm_setting.t_intercept = 351.64f;
-        algorithm_setting.t_intercept=321.9705002;
+        //        algorithm_setting.t_intercept = 351.64f;
+        algorithm_setting.t_intercept = 321.9705002;
     }
 }
-
 /**
   *******************************************************************************
   * @Description: 主任务
@@ -1174,14 +925,9 @@ void main_task(void *p)
 
     main_task_handle = xTaskGetCurrentTaskHandle();
     uint32_t start_ticket = xTaskGetTickCount();
-    pulser_tx_buffer_len = 0;
-    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1; // LOW
-    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1; // HIGH
-    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 4; // LOW
-    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1; // HIGH
-    pulser_double_stage = 1;                                           // 双脉冲阶段
-    for (int i = 0; i < 16; i++)
-        pulser_tx_buffer[i * 2 + 1] = MUD_PULSE_TIMER_HZ * 1; // 设置高电平的时间
+
+    // 初始化泥浆脉冲
+    mud_pulse_init(&mud_pulse);
 
     lpuart1_rx_timer = xTimerCreate("lpuart_rx_timer", 10, 0, 0, timer_lpuart1_rx_cb);
     lpuart2_rx_timer = xTimerCreate("lpuart2_rx_timer", 10, 0, 0, lpuart2_rx_timer_cb);
@@ -1191,16 +937,16 @@ void main_task(void *p)
     // 加载配置
     load_algorithm_setting_from_flash();
     // 测试用配置设置
-    //setting_for_test();
+    // setting_for_test();
 
-    if(algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680 || algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
+    if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680 || algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
     {
         xTaskCreate(iam_20680ht_task, "iam_20680ht_task", 256, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
     }
     // 启动信号处理任务
     signal_process_init();
     xTaskCreate(signal_process_task, "signal_process_task", 256, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
-		// 启动算法任务
+    // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
 
     // 处理上位机事件
@@ -1263,27 +1009,11 @@ void main_task(void *p)
 
     xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
     // 启动泥浆脉冲
-    pulser_start_tx(pulser_tx_buffer, pulser_tx_buffer_len);
+    mud_pulse_start_tx(&mud_pulse);
     xTimerStart(xTimerCreate("timer_send_dbg_data_cb", 100, 1, 0, timer_send_dbg_data_cb), 1000);
 
     // Enter main loop
     printf("Enter main loop!\r\n");
-    RETRY_COUNT_BAK = is25pl032_flash_get_retry_count();
-    PULSE_GROUP_INTERVAL = is25pl032_flash_get_Pulse_group_interval();
-    PULSE_SEND_DELAY = is25pl032_flash_get_Pulse_send_delay();
-    /* 如果Flash中没有参数，使用默认值 */
-    if (RETRY_COUNT_BAK <= 0)
-    {
-        RETRY_COUNT_BAK = 1; // 确保泥浆脉冲数据发送次数至少为1次
-    }
-    if (PULSE_GROUP_INTERVAL <= 0)
-    {
-        PULSE_GROUP_INTERVAL = 60; // 确保每组泥浆脉冲数据的间隔至少为60秒
-    }
-    if (PULSE_SEND_DELAY <= 0)
-    {
-        PULSE_SEND_DELAY = 60; // 确保泥浆脉冲数据发送延时时间至少为60秒
-    }
     for (;;)
     {
         uint32_t notify;
