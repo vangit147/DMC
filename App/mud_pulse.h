@@ -24,7 +24,7 @@
 #define MUD_PULSE_PIN 13
 
 // 泥浆脉冲配置结构体
-typedef struct
+typedef __packed struct
 {
     uint32_t timer_hz;               // 定时器频率
     uint32_t no_vibration_time;      // 无振动时间
@@ -37,7 +37,7 @@ typedef struct
 } mud_pulse_config_t;
 
 // 泥浆脉冲状态结构体
-typedef struct
+typedef __packed struct
 {
     uint8_t double_stage;         // 双脉冲阶段
     uint8_t tx_request;           // 发送请求
@@ -45,7 +45,7 @@ typedef struct
     uint32_t no_vibration_period; // 无振动周期
     uint32_t period_counter;      // 周期计数
     uint8_t last_motion_state;    // 上次运动状态
-    uint8_t send_count;           // 发送计数
+    uint8_t remaining_groups;     // 剩余要发送的组数
     uint8_t tx_started;           // 发送启动标志
 } mud_pulse_state_t;
 
@@ -84,9 +84,6 @@ typedef struct
 // 初始化函数
 void mud_pulse_init(mud_pulse_t *pulse);
 
-// 配置函数
-void mud_pulse_config(mud_pulse_t *pulse, mud_pulse_config_t *config);
-
 // 启动发送
 int32_t mud_pulse_start_tx(mud_pulse_t *pulse);
 
@@ -96,29 +93,14 @@ void mud_pulse_update_state(mud_pulse_t *pulse);
 // 定时器中断处理
 void mud_pulse_timer_isr(mud_pulse_t *pulse);
 
-// 获取状态
-mud_pulse_state_t mud_pulse_get_state(mud_pulse_t *pulse);
-
-// 设置数据
-void mud_pulse_set_data(mud_pulse_t *pulse, float ie, float temp, float hs, float voltage);
-
-// 设置发送计数
-void mud_pulse_set_send_count(mud_pulse_t *pulse, uint8_t count);
-
-// 设置重试计数
-void mud_pulse_set_retry_count(mud_pulse_t *pulse, uint32_t count);
-
-// 设置无振动时间
-void mud_pulse_set_no_vibration_period(mud_pulse_t *pulse, uint32_t period);
-
-// 设置发送缓冲区
-void mud_pulse_set_tx_buffer(mud_pulse_t *pulse, int32_t *buffer, uint32_t len);
-
 // 更新泥浆脉冲数据
-void mud_pulse_update_data(mud_pulse_t *pulse,
-                           const interval_info_t *interval_info,
-                           const sensor_data_t *sensor_data,
-                           uint8_t currentMotionState);
+void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState);
+
+// 初始化泥浆脉冲数据采集
+void mud_pulse_init_collect(mud_pulse_t *pulse);
+
+// 设置泥浆脉冲数据
+void mud_pulse_set_data(mud_pulse_t *pulse);
 
 // 全局变量声明
 extern mud_pulse_t mud_pulse;

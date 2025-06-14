@@ -69,13 +69,14 @@ static void lpuart0_rx_cb(uint32_t uartHandle, uint32_t data)
   */
 void vApplicationIdleHook(void)
 {
-    uint32_t    SCR = SCB->SCR;
-
-    SCR &= ~(SCB_SCR_SLEEPDEEP_Msk);
-    SCR |= SCB_SCR_SEVONPEND_Msk;
-    SCB->SCR = SCR;
-
-    __WFI();
+    if (is25pl032_flash_get_idle_hook_enable())
+    {
+        uint32_t SCR = SCB->SCR;
+        SCR &= ~(SCB_SCR_SLEEPDEEP_Msk);
+        SCR |= SCB_SCR_SEVONPEND_Msk;
+        SCB->SCR = SCR;
+        __WFI();
+    }
 }
 /**
   *******************************************************************************

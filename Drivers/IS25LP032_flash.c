@@ -13,6 +13,7 @@
  */
 /************* Included files, Macros, Various and Declarations ***************/
 #include "IS25LP032_flash.h"
+#include "mud_pulse.h"
 
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
@@ -38,7 +39,7 @@ FLASH 数据区定义
 +--------------------------+
 
 */
-#define FLASH_INITED_FLAG 0XABEEBEE6
+#define FLASH_INITED_FLAG 0XABEEBEE7
 #define FLASH_TOTAL_SIZE (4 * 1024 * 1024)
 // CFG
 #define DEVICE_CFG_FLAG 0XBEE1BEEE
@@ -131,67 +132,57 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     float t_scale;               // 温度比例系数
     float t_intercept;           // 温度截距
     /* 泥浆脉冲设置 */
-    uint32_t retry_count;          // 泥浆脉冲重传次数
-    uint32_t Pulse_group_interval; // 每组泥浆脉冲数据的间隔
-    uint32_t Pulse_send_delay;     // 泥浆脉冲数据发送延时时间
-    uint32_t Pulse_auto_send;     // 泥浆脉冲数据定时发送时间
-    uint32_t Static_data_collection;     // 静态数据收集的时间
-    uint32_t Number_of_pluse_group;     // 泥浆脉冲发送的组数
+    mud_pulse_config_t mud_pulse_cfg; // 泥浆脉冲配置
     /* 振动参数设置 */
     float vibration_threshold;      // 振动阈值
     uint32_t vibration_sensitivity; // 振动灵敏度
+    uint32_t idle_hook_enable;      // 低功耗状态
+    float calibration_data;         // 添加校准数据变量
 } CFG_T;
 
 // 默认参数
-static const CFG_T default_cfg =
-    {
-        .device_cfg_tag = DEVICE_CFG_FLAG,
-        .device_cfg_sn = 1,
-        .log_saved_period = 60,
-        .acc_sensor_type = 0,  // 默认使用IAM-20680HT加速度计
-        .gyro_sensor_type = 0, // 默认使用IAM-20680HT陀螺仪
-        .offset[0] = 0.0f,
-        .offset[1] = 0.0f,
-        .xr_limit = 0.0015f,
-        .yr_limit = 0.015f,
-        .gx_bias = 0.0f,
-        .gy_bias = 0.0f,
-        .gz_bias = 0.0f,
-        .bx = 0.0f,
-        .by = 0.0f,
-        .bz = 0.0f,
-        .mxx = 1.0f,
-        .mxy = 0.0f,
-        .mxz = 0.0f,
-        .myy = 1.0f,
-        .myz = 0.0f,
-        .mzz = 1.0f,
-        .px[0] = 0.0f,
-        .px[1] = 0.0f,
-        .px[2] = 0.0f,
-        .px[3] = 0.0f,
-        .px[4] = 0.0f,
-        .py[0] = 0.0f,
-        .py[1] = 0.0f,
-        .py[2] = 0.0f,
-        .py[3] = 0.0f,
-        .py[4] = 0.0f,
-        .pz[1] = 0.0f,
-        .pz[2] = 0.0f,
-        .pz[3] = 0.0f,
-        .pz[4] = 0.0f,
-        .temp_comp_lower_limit = -20.0f, // 温度补偿下限默认值
-        .temp_comp_upper_limit = 150.0f, // 温度补偿上限默认值
-        .t_scale = -0.000164327854f,
-        .t_intercept = 321.9705002,
-        .retry_count = 1,
-        .Pulse_group_interval = 60,
-        .Pulse_send_delay = 60,
-        .Pulse_auto_send = 900,
-        .Static_data_collection = 30,
-        .Number_of_pluse_group = 3,
-        .vibration_threshold = THRESHOLD,
-        .vibration_sensitivity = SENSITIVITY,
+static const CFG_T default_cfg = {
+    .device_cfg_tag = DEVICE_CFG_FLAG,
+    .device_cfg_sn = 1,
+    .log_saved_period = 60,
+    .acc_sensor_type = 0,  // 默认使用IAM-20680HT加速度计
+    .gyro_sensor_type = 0, // 默认使用IAM-20680HT陀螺仪
+    .offset = {0.0f, 0.0f},
+    .xr_limit = 0.0015f,
+    .yr_limit = 0.015f,
+    .gx_bias = 0.0f,
+    .gy_bias = 0.0f,
+    .gz_bias = 0.0f,
+    .bx = 0.0f,
+    .by = 0.0f,
+    .bz = 0.0f,
+    .mxx = 1.0f,
+    .mxy = 0.0f,
+    .mxz = 0.0f,
+    .myy = 1.0f,
+    .myz = 0.0f,
+    .mzz = 1.0f,
+    .px = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    .py = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    .pz = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+    .temp_comp_lower_limit = -20.0f, // 温度补偿下限默认值
+    .temp_comp_upper_limit = 150.0f, // 温度补偿上限默认值
+    .t_scale = -0.000164327854f,
+    .t_intercept = 321.9705002,
+    .vibration_threshold = THRESHOLD,
+    .vibration_sensitivity = SENSITIVITY,
+    .idle_hook_enable = 0,
+    .mud_pulse_cfg = {
+        .timer_hz = 100,              // 100Hz定时器频率
+        .no_vibration_time = 60,      // 60秒无振动时间
+        .group_interval = 60,         // 60秒组间隔
+        .send_delay = 60,             // 60秒发送延时
+        .max_retry_count = 1,         // 1次重试
+        .number_of_groups = 3,        // 3组发送
+        .static_collection_time = 30, // 30秒静态数据采集时间
+        .auto_send_period = 900       // 900秒定时发送时间
+    },
+    .calibration_data = 0.0f
 };
 
 typedef __packed union
@@ -903,10 +894,10 @@ int32_t is25pl032_flash_save_dev_cfg(void)
         dev_cfg_index = 0;
         is25pl032_flash_erase_sector(DEVICE_CFG_FLASH_ADDRESS, 0);
     }
-    is25pl032_flash_normal_write(DEVICE_CFG_FLASH_ADDRESS +  sizeof(dev_cfg) * dev_cfg_index,
-                                 (uint8_t*)&dev_cfg, sizeof(dev_cfg));
-		
-		load_algorithm_setting_from_flash();
+    is25pl032_flash_normal_write(DEVICE_CFG_FLASH_ADDRESS + sizeof(dev_cfg) * dev_cfg_index,
+                                 (uint8_t *)&dev_cfg, sizeof(dev_cfg));
+
+    load_algorithm_setting_from_flash();
     return 0;
 }
 /**
@@ -1679,7 +1670,7 @@ int32_t set_temp_comp_upper_limit(float limit)
  */
 uint32_t is25pl032_flash_set_retry_count(uint32_t count)
 {
-    dev_cfg.u_cfg.cfg.retry_count = count;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.max_retry_count = count;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1693,7 +1684,7 @@ uint32_t is25pl032_flash_set_retry_count(uint32_t count)
  */
 uint32_t is25pl032_flash_get_retry_count(void)
 {
-    return dev_cfg.u_cfg.cfg.retry_count;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.max_retry_count;
 }
 
 /**
@@ -1706,7 +1697,7 @@ uint32_t is25pl032_flash_get_retry_count(void)
  */
 uint32_t is25pl032_flash_set_Pulse_group_interval(uint32_t Pulse_group_interval)
 {
-    dev_cfg.u_cfg.cfg.Pulse_group_interval = Pulse_group_interval;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.group_interval = Pulse_group_interval;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1720,7 +1711,7 @@ uint32_t is25pl032_flash_set_Pulse_group_interval(uint32_t Pulse_group_interval)
  */
 uint32_t is25pl032_flash_get_Pulse_group_interval(void)
 {
-    return dev_cfg.u_cfg.cfg.Pulse_group_interval;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.group_interval;
 }
 
 /**
@@ -1733,7 +1724,7 @@ uint32_t is25pl032_flash_get_Pulse_group_interval(void)
  */
 uint32_t is25pl032_flash_set_Pulse_send_delay(uint32_t Pulse_send_delay)
 {
-    dev_cfg.u_cfg.cfg.Pulse_send_delay = Pulse_send_delay;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.send_delay = Pulse_send_delay;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1747,7 +1738,7 @@ uint32_t is25pl032_flash_set_Pulse_send_delay(uint32_t Pulse_send_delay)
  */
 uint32_t is25pl032_flash_get_Pulse_send_delay(void)
 {
-    return dev_cfg.u_cfg.cfg.Pulse_send_delay;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.send_delay;
 }
 
 /**
@@ -1760,7 +1751,7 @@ uint32_t is25pl032_flash_get_Pulse_send_delay(void)
  */
 uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
 {
-    dev_cfg.u_cfg.cfg.Pulse_auto_send = Pulse_auto_send;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.auto_send_period = Pulse_auto_send;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1774,7 +1765,7 @@ uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
  */
 uint32_t is25pl032_flash_get_Pulse_auto_send(void)
 {
-    return dev_cfg.u_cfg.cfg.Pulse_auto_send;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.auto_send_period;
 }
 
 /**
@@ -1787,7 +1778,7 @@ uint32_t is25pl032_flash_get_Pulse_auto_send(void)
  */
 uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collection)
 {
-    dev_cfg.u_cfg.cfg.Static_data_collection = Static_data_collection;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.static_collection_time = Static_data_collection;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1801,7 +1792,7 @@ uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collect
  */
 uint32_t is25pl032_flash_get_Static_data_collection(void)
 {
-    return dev_cfg.u_cfg.cfg.Static_data_collection;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.static_collection_time;
 }
 
 /**
@@ -1814,7 +1805,7 @@ uint32_t is25pl032_flash_get_Static_data_collection(void)
  */
 uint32_t is25pl032_flash_set_Number_of_pluse_group(uint32_t Number_of_pluse_group)
 {
-    dev_cfg.u_cfg.cfg.Number_of_pluse_group = Number_of_pluse_group;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.number_of_groups = Number_of_pluse_group;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1828,7 +1819,7 @@ uint32_t is25pl032_flash_set_Number_of_pluse_group(uint32_t Number_of_pluse_grou
  */
 uint32_t is25pl032_flash_get_Number_of_pluse_group(void)
 {
-    return dev_cfg.u_cfg.cfg.Number_of_pluse_group;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.number_of_groups;
 }
 
 /**
@@ -1883,4 +1874,59 @@ uint32_t is25pl032_flash_set_vibration_sensitivity(uint32_t vibration_sensitivit
 uint32_t is25pl032_flash_get_vibration_sensitivity(void)
 {
     return dev_cfg.u_cfg.cfg.vibration_sensitivity;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置低功耗状态
+ * @Parameters : enable - 使能状态（0-禁用，1-启用）
+ * @RetValue   : 0-成功，-1-失败
+ * @Note       : 设置低功耗状态
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_idle_hook_enable(uint32_t enable)
+{
+    dev_cfg.u_cfg.cfg.idle_hook_enable = enable;
+    return is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取低功耗状态
+ * @Parameters : 无
+ * @RetValue   : 低功耗状态（0-禁用，1-启用）
+ * @Note       : 获取低功耗状态
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_get_idle_hook_enable(void)
+{
+    return dev_cfg.u_cfg.cfg.idle_hook_enable;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取校准数据
+ * @Parameters : 无
+ * @RetValue   : 校准数据值
+ * @Note       : 获取校准数据
+ *******************************************************************************
+ */
+float is25pl032_flash_get_calibration_data(void)
+{
+    return dev_cfg.u_cfg.cfg.calibration_data;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置校准数据
+ * @Parameters : calibration_data - 要设置的校准数据值
+ * @RetValue   : 0-成功，-1-失败
+ * @Note       : 设置校准数据
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
+{
+    dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
+    is25pl032_flash_save_dev_cfg();
+    return 0;
 }

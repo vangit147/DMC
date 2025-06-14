@@ -16,30 +16,12 @@
 #include "IS25LP032_flash.h"
 #include "cpu.h"
 
+// 声明外部变量
+extern interval_info_t interval_info;
+extern sensor_data_t sensor_data; // 用于存储传感器数据
+
 // 全局变量定义
 mud_pulse_t mud_pulse;
-
-// 默认配置
-static const mud_pulse_config_t default_config = {
-    .timer_hz = 100,         // 100Hz定时器频率
-    .no_vibration_time = 60, // 60秒无振动时间
-    .group_interval = 60,    // 60秒组间隔
-    .send_delay = 60,        // 60秒发送延时
-    .max_retry_count = 1,    // 1次重试
-    .number_of_groups = 3,   // 3组发送
-    .auto_send_period = 120  // 120秒定时发送时间
-};
-
-// 配置函数
-void mud_pulse_config(mud_pulse_t *pulse, mud_pulse_config_t *config)
-{
-    if (!pulse || !config)
-        return;
-
-    __disable_irq();
-    pulse->config = *config;
-    __enable_irq();
-}
 
 // 启动发送
 int32_t mud_pulse_start_tx(mud_pulse_t *pulse)
@@ -105,15 +87,16 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
                 pulse->data.curr_index = 2;
                 pulse->data.curr_duration = pulse->data.tx_buffer[pulse->data.curr_index];
             }
-            if (pulse->state.send_count != 0 && pulse->state.current_retry_count == 0)
+            if (pulse->state.remaining_groups != 0 && pulse->state.current_retry_count == 0)
             {
                 // 延迟60s再发送下一次的retry_count组数据
                 pulse->state.tx_request = 1;
-                pulse->state.send_count--;
+                pulse->state.remaining_groups--;
                 pulse->state.current_retry_count = pulse->config.max_retry_count;
                 // 持续振动中，每组泥浆脉冲数据发送的时间间隔
                 pulse->data.tx_buffer[pulse->data.curr_index] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
                 pulse->data.tx_buffer[pulse->data.curr_index + 1] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
+                pulse->data.curr_duration = pulse->data.tx_buffer[pulse->data.curr_index];
             }
         }
     }
@@ -129,22 +112,8 @@ void mud_pulse_timer_isr(mud_pulse_t *pulse)
     mud_pulse_update_state(pulse);
 }
 
-// 获取状态
-mud_pulse_state_t mud_pulse_get_state(mud_pulse_t *pulse)
-{
-    mud_pulse_state_t state = {0};
-    if (!pulse)
-        return state;
-
-    __disable_irq();
-    state = pulse->state;
-    __enable_irq();
-
-    return state;
-}
-
 // 设置数据
-void mud_pulse_set_data(mud_pulse_t *pulse, float ie, float temp, float hs, float voltage)
+void mud_pulse_set_data(mud_pulse_t *pulse)
 {
     if (!pulse)
         return;
@@ -167,52 +136,6 @@ void mud_pulse_set_data(mud_pulse_t *pulse, float ie, float temp, float hs, floa
 
     pulse->data.buffer_len = index;
 
-    __enable_irq();
-}
-
-// 设置发送计数
-void mud_pulse_set_send_count(mud_pulse_t *pulse, uint8_t count)
-{
-    if (!pulse)
-        return;
-
-    __disable_irq();
-    pulse->state.send_count = count;
-    __enable_irq();
-}
-
-// 设置重试计数
-void mud_pulse_set_retry_count(mud_pulse_t *pulse, uint32_t count)
-{
-    if (!pulse)
-        return;
-
-    __disable_irq();
-    pulse->state.current_retry_count = count;
-    __enable_irq();
-}
-
-// 设置无振动时间
-void mud_pulse_set_no_vibration_period(mud_pulse_t *pulse, uint32_t period)
-{
-    if (!pulse)
-        return;
-
-    __disable_irq();
-    pulse->state.no_vibration_period = period;
-    __enable_irq();
-}
-
-// 设置发送缓冲区
-void mud_pulse_set_tx_buffer(mud_pulse_t *pulse, int32_t *buffer, uint32_t len)
-{
-    if (!pulse || !buffer || len > 64)
-        return;
-
-    __disable_irq();
-    for (uint32_t i = 0; i < len; i++)
-        pulse->data.tx_buffer[i] = buffer[i];
-    pulse->data.buffer_len = len;
     __enable_irq();
 }
 
@@ -240,100 +163,130 @@ void mud_pulse_init(mud_pulse_t *pulse)
     if (!pulse)
         return;
 
-    // 初始化配置
-    pulse->config = default_config;
-
     // 从Flash读取配置参数
-    uint32_t retry_count = 0;
-    uint32_t group_interval = 0;
-    uint32_t send_delay = 0;
-    uint32_t number_of_groups = 0;
-    uint32_t auto_send_period = 0;
-    uint32_t static_collection_time = 0;
+    uint32_t retry_count = is25pl032_flash_get_retry_count();
+    uint32_t group_interval = is25pl032_flash_get_Pulse_group_interval();
+    uint32_t send_delay = is25pl032_flash_get_Pulse_send_delay();
+    uint32_t number_of_groups = is25pl032_flash_get_Number_of_pluse_group();
+    uint32_t auto_send_period = is25pl032_flash_get_Pulse_auto_send();
+    uint32_t static_collection_time = is25pl032_flash_get_Static_data_collection();
 
-    // 读取重试次数
-    if (is25pl032_flash_get_retry_count() == 0)
+    // 检查配置合理性并设置
+    pulse->config.timer_hz = 100; // 固定值，不需要从Flash读取
+
+    // 检查重试次数
+    if (retry_count >= 1 && retry_count <= 10)
     {
         pulse->config.max_retry_count = retry_count;
     }
+    else
+    {
+        pulse->config.max_retry_count = 1; // 默认值
+    }
 
-    // 读取组间隔
-    if (is25pl032_flash_get_Pulse_group_interval() == 0)
+    // 检查组间隔
+    if (group_interval >= 60 && group_interval <= 600)
     {
         pulse->config.group_interval = group_interval;
     }
+    else
+    {
+        pulse->config.group_interval = 60; // 默认值
+    }
 
-    // 读取发送延迟
-    if (is25pl032_flash_get_Pulse_send_delay() == 0)
+    // 检查发送延迟
+    if (send_delay >= 60 && send_delay <= 600)
     {
         pulse->config.send_delay = send_delay;
     }
+    else
+    {
+        pulse->config.send_delay = 60; // 默认值
+    }
 
-    // 读取脉冲组数量
-    if (is25pl032_flash_get_Number_of_pluse_group() == 0)
+    // 检查脉冲组数量
+    if (number_of_groups >= 1 && number_of_groups <= 5)
     {
         pulse->config.number_of_groups = number_of_groups;
     }
+    else
+    {
+        pulse->config.number_of_groups = 3; // 默认值
+    }
 
-    // 读取定时发送时间
-    if (is25pl032_flash_get_Pulse_auto_send() == 0)
+    // 检查定时发送时间
+    if (auto_send_period >= 60 && auto_send_period <= 36000)
     {
         pulse->config.auto_send_period = auto_send_period;
     }
+    else
+    {
+        pulse->config.auto_send_period = 900; // 默认值
+    }
 
-    // 读取静态数据采集时间
-    if (is25pl032_flash_get_Static_data_collection() == 0)
+    // 检查静态数据采集时间
+    if (static_collection_time >= 10 && static_collection_time <= 60)
     {
         pulse->config.static_collection_time = static_collection_time;
     }
+    else
+    {
+        pulse->config.static_collection_time = 30; // 默认值
+    }
+
+    // 设置无振动时间默认值
+    pulse->config.no_vibration_time = 60; // 默认值60秒
 
     // 初始化状态
     pulse->state.double_stage = 0;
     pulse->state.tx_request = 0;
     pulse->state.current_retry_count = 0;
     pulse->state.no_vibration_period = 0;
-    pulse->state.period_counter = 0;
+    pulse->state.period_counter = pulse->config.auto_send_period;
     pulse->state.last_motion_state = 0;
-    pulse->state.send_count = 0;
+    pulse->state.remaining_groups = 0;
     pulse->state.tx_started = 0;
 
     // 初始化数据
     pulse->data.curr_duration = 0;
+    pulse->data.buffer_len = 0;
+    pulse->data.curr_index = 0;
 
     // 初始化数据采集
     mud_pulse_init_collect(pulse);
+
+    // 初始化发送数据
+    mud_pulse_set_data(pulse);
 }
 
 // 更新泥浆脉冲数据
-void mud_pulse_update_data(mud_pulse_t *pulse,
-                           const interval_info_t *interval_info,
-                           const sensor_data_t *sensor_data,
-                           uint8_t currentMotionState)
+void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
 {
-    if (!pulse || !interval_info || !sensor_data)
-    {
+    if (!pulse)
         return;
-    }
 
     uint32_t index = 0;
     float temp_voltage;
     inclination_hs_t hs;
-    int32_t buffer[64]; // 临时缓冲区
 
     // 只获取静态后30秒内井斜、温度、高边、电压数据的平均值
     // 默认情况下，在每次振动前都会静止一分钟
-    if (currentMotionState == 0 && pulse->collect.count < 30)
+    // 更新数据采集
+    if (currentMotionState == 0 && pulse->collect.count < pulse->config.static_collection_time)
     {
-        if (interval_info->good_inc_avg < pulse->collect.min_ie)
-            pulse->collect.min_ie = interval_info->good_inc_avg;
-        if (sensor_data->t_C < pulse->collect.min_temp)
-            pulse->collect.min_temp = sensor_data->t_C;
+        // 更新最小值
+        if (interval_info.good_inc_avg < pulse->collect.min_ie)
+            pulse->collect.min_ie = interval_info.good_inc_avg;
+        if (sensor_data.t_C < pulse->collect.min_temp)
+            pulse->collect.min_temp = sensor_data.t_C;
         get_inc_hs(&hs);
         if (hs.hs < pulse->collect.min_hs)
             pulse->collect.min_hs = hs.hs;
         temp_voltage = get_36V_voltage();
         if (temp_voltage < pulse->collect.min_voltage)
             pulse->collect.min_voltage = temp_voltage;
+
+        // 更新平均值
         pulse->collect.avg_ie = (pulse->collect.avg_ie * pulse->collect.count + pulse->collect.min_ie) / (pulse->collect.count + 1);
         pulse->collect.avg_temp = (pulse->collect.avg_temp * pulse->collect.count + pulse->collect.min_temp) / (pulse->collect.count + 1);
         pulse->collect.avg_hs = (pulse->collect.avg_hs * pulse->collect.count + pulse->collect.min_hs) / (pulse->collect.count + 1);
@@ -354,34 +307,35 @@ void mud_pulse_update_data(mud_pulse_t *pulse,
             // 1. currentMotionState==0 && count == 30
             // 2. currentMotionState==1 && count == 0
             pulse->state.period_counter = pulse->config.auto_send_period;
+            currentMotionState = 1;
         }
     }
 
+    __disable_irq(); // 开始关键数据更新，禁用中断
     if (currentMotionState)
     {
         //! mud_pulse.tx_request 可以过滤掉震动后频繁的静止与震动
         if (!pulse->state.last_motion_state && !pulse->state.tx_request)
         {
-            __disable_irq(); // 开始关键数据更新，禁用中断
-
             // 持续振动中，只会发送三组泥浆脉冲数据
-            mud_pulse_set_send_count(pulse, pulse->config.number_of_groups);
+            pulse->state.remaining_groups = pulse->config.number_of_groups;
             // 一组泥浆脉冲数据发送的次数
-            mud_pulse_set_retry_count(pulse, pulse->config.max_retry_count);
+            pulse->state.current_retry_count = pulse->config.max_retry_count;
             // 振动后，连续的静止时间。若振动后连续静止的时间超过此数据，则认为目前静止了
-            mud_pulse_set_no_vibration_period(pulse, pulse->config.no_vibration_time);
+            pulse->state.no_vibration_period = pulse->config.no_vibration_time;
 
             // 准备发送缓冲区
-            index = 0;
             // 开泵后等待泥浆脉冲压强准备好的时间
-            buffer[index++] = (pulse->config.send_delay / 2) * pulse->config.timer_hz;
-            buffer[index++] = (pulse->config.send_delay / 2) * pulse->config.timer_hz;
+            pulse->data.tx_buffer[index++] = (pulse->config.send_delay / 2) * pulse->config.timer_hz;
+            pulse->data.tx_buffer[index++] = (pulse->config.send_delay / 2) * pulse->config.timer_hz;
+            pulse->data.curr_duration = pulse->data.tx_buffer[index - 2];
+            pulse->state.tx_request = 1;
 
             if (pulse->collect.count == 30)
             {
-                buffer[index] = 34 * pulse->config.timer_hz;
+                pulse->data.tx_buffer[index] = 34 * pulse->config.timer_hz;
                 index += 2;
-                buffer[index] = 34 * pulse->config.timer_hz;
+                pulse->data.tx_buffer[index] = 34 * pulse->config.timer_hz;
                 index += 2;
 
                 // 井斜
@@ -390,7 +344,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse,
                     avg_ie = 0.0f;
                 if (avg_ie > 180.0f)
                     avg_ie = 180.0f;
-                buffer[index] = 23 * pulse->config.timer_hz + (avg_ie * pulse->config.timer_hz) / 2;
+                pulse->data.tx_buffer[index] = 23 * pulse->config.timer_hz + (avg_ie * pulse->config.timer_hz) / 2;
                 index += 2;
 
                 // 温度
@@ -399,12 +353,12 @@ void mud_pulse_update_data(mud_pulse_t *pulse,
                     avg_temp = 0.0f;
                 if (avg_temp > 180.0f)
                     avg_temp = 180.0f;
-                buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * avg_temp / 180.0f + 5;
+                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * avg_temp / 180.0f + 5;
                 index += 2;
 
                 // 高边
                 float avg_hs = pulse->collect.avg_hs;
-                buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * (360.0f - avg_hs) / 360.0f;
+                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * (360.0f - avg_hs) / 360.0f;
                 index += 2;
 
                 // 电压
@@ -413,18 +367,14 @@ void mud_pulse_update_data(mud_pulse_t *pulse,
                     avg_voltage = 20.0f;
                 if (avg_voltage > 36.0f)
                     avg_voltage = 36.0f;
-                buffer[index] = 19 * pulse->config.timer_hz + pulse->config.timer_hz * (avg_voltage - 20.0f) / 2.0f + 5;
+                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + pulse->config.timer_hz * (avg_voltage - 20.0f) / 2.0f + 5;
                 index += 2;
+
+                pulse->data.buffer_len = index;
+
+                // 重置数据采集
+                mud_pulse_init_collect(pulse);
             }
-
-            // 设置发送缓冲区
-            mud_pulse_set_tx_buffer(pulse, buffer, index);
-            pulse->state.tx_request = 1;
-
-            // 重置数据采集
-            mud_pulse_init_collect(pulse);
-
-            __enable_irq(); // 关键数据更新完成，启用中断
         }
     }
     else
@@ -433,10 +383,13 @@ void mud_pulse_update_data(mud_pulse_t *pulse,
         {
             // 在当连续静止一分钟时，则认为已经处于非振动状态
             if (pulse->state.no_vibration_period == 0)
-                mud_pulse_set_send_count(pulse, 0);
+                pulse->state.remaining_groups = 0;
             else
-                mud_pulse_set_no_vibration_period(pulse, pulse->state.no_vibration_period - 1);
+                pulse->state.no_vibration_period--;
         }
+        else
+            pulse->state.no_vibration_period = pulse->config.no_vibration_time;
     }
     pulse->state.last_motion_state = currentMotionState;
+    __enable_irq(); // 关键数据更新完成，启用中断
 }

@@ -275,8 +275,8 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&y_radius, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ofx, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ofy, 4);
-        p_uint8=toOutPutBuffer(p_uint8,(uint8_t*)&xr_limit,4);
-        p_uint8=toOutPutBuffer(p_uint8,(uint8_t*)&yr_limit,4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&xr_limit, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&yr_limit, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&inc1_r, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&inc1_p, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&inc3_r, 4);
@@ -425,7 +425,7 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
 
-        sendLength = 180;
+        sendLength = 178;
         output_buffer[3] = sendLength >> 16 & 0xff;
         output_buffer[4] = sendLength & 0xff;
 
@@ -446,12 +446,12 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.gz_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.gz_avg, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.temp, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.roll, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.roll, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.inc1_max, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.inc1_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.inc1_avg, 4);
 
-        send_data_to_vd_tool(output_buffer, 83);
+        send_data_to_vd_tool(output_buffer, 81);
 
         p_uint8 = (uint8_t *)output_buffer;
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.inc2_max, 4);
@@ -463,11 +463,11 @@ void send_msg(void)
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_x_radius_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_x_radius_max, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_x_radius_avg, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_x_radius_avg, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_y_radius_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_y_radius_max, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_y_radius_avg, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.diff_t, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.virtual_y_radius_avg, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.diff_t, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.gz_dps_sdv_max, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.gz_dps_sdv_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.std_dev_ax_ay_max, 4);
@@ -478,11 +478,11 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_data_max, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_data_avg, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c0_num_max, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c0_num_min, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c0_num_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c1_num_max, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c1_num_min, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c1_num_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c2_num_max, 4);
-        //p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c2_num_min, 4);
+        // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c2_num_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.max_peace_time_max, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.peace_time_count, 2);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.s_f32_36V, 4);
@@ -494,6 +494,7 @@ void send_msg(void)
 
         send_data_to_vd_tool(output_buffer, 45);
         isSend = 0;
+        goto ok;
     }
 
     if (receiveMsg[0] == 'K' && receiveMsg[1] == 'P' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
@@ -861,76 +862,82 @@ void send_msg(void)
             isSend = 0;
         }
     }
-		if(receiveMsg[0] == 'P' && receiveMsg[2] == '='){
-			float b[5];
-			if(receiveMsg[3] != '?'){
-				uint8_t bIndex = 0;
-        uint8_t k = 3;
-				uint8_t temp[24];
-				uint8_t tempIndex = 0;
-				for(; k < RECEIVE_MSG_LEN; k++)
-				{
-						if(receiveMsg[k] == 0x2C || receiveMsg[k] == 0x00)
-						{
-								tempIndex = 0;
-								b[bIndex++] = atof((const char*)temp);
-								for(uint8_t i = 0; i < 24; i++)
-								{
-										temp[i] = 0x00;
-								}
-								if(receiveMsg[k] == 0x00)
-								{
-										break;
-								}
-								continue;
-						}
-						temp[tempIndex++] = receiveMsg[k];
-				}
-				switch(receiveMsg[1]){
-					case 'X':						
-						is25pl032_flash_set_px(b);
-						break;
-					case 'Y':
-					  is25pl032_flash_set_py(b);
-						break;
-					case 'Z':
-					  is25pl032_flash_set_pz(b);
-						break;
-				}
-				goto ok;
-			}else{				
-				uint8_t flag = 0x14;
-				switch(receiveMsg[1]){
-					case 'X':
-						flag = 0x14;
-						is25pl032_flash_get_px(b);
-						break;
-					case 'Y':
-						flag = 0x15;
-					  is25pl032_flash_get_py(b);
-						break;
-					case 'Z':
-						flag = 0x16;
-					  is25pl032_flash_get_pz(b);
-						break;
-				}
-				uint8_t *p_uint8 = (uint8_t*)output_buffer;
-				*p_uint8++ = 0x55;
-				*p_uint8++ = flag;
-				*p_uint8++ = 0x54;
-				*p_uint8++ = 0x01;
-				*p_uint8++ = 0x01;			 
-				for(uint8_t k = 0; k < 5; k++)
-				{
-					p_uint8=toOutPutBuffer(p_uint8,(uint8_t*)&b[k],4);
-				}
-				*p_uint8++ = 0x54;
-				*p_uint8++ = flag;
-				*p_uint8++ = 0x55;
-				sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-				isSend = 0;
-			}
-		}
+    if (receiveMsg[0] == 'P' && receiveMsg[1] != 'O' && receiveMsg[2] == '=')
+    {
+        float b[5];
+        if (receiveMsg[3] != '?')
+        {
+            uint8_t bIndex = 0;
+            uint8_t k = 3;
+            uint8_t temp[24];
+            uint8_t tempIndex = 0;
+            for (; k < RECEIVE_MSG_LEN; k++)
+            {
+                if (receiveMsg[k] == 0x2C || receiveMsg[k] == 0x00)
+                {
+                    tempIndex = 0;
+                    b[bIndex++] = atof((const char *)temp);
+                    for (uint8_t i = 0; i < 24; i++)
+                    {
+                        temp[i] = 0x00;
+                    }
+                    if (receiveMsg[k] == 0x00)
+                    {
+                        break;
+                    }
+                    continue;
+                }
+                temp[tempIndex++] = receiveMsg[k];
+            }
+            switch (receiveMsg[1])
+            {
+            case 'X':
+                is25pl032_flash_set_px(b);
+                break;
+            case 'Y':
+                is25pl032_flash_set_py(b);
+                break;
+            case 'Z':
+                is25pl032_flash_set_pz(b);
+                break;
+            }
+            goto ok;
+        }
+        else
+        {
+            uint8_t flag = 0x14;
+            switch (receiveMsg[1])
+            {
+            case 'X':
+                flag = 0x14;
+                is25pl032_flash_get_px(b);
+                break;
+            case 'Y':
+                flag = 0x15;
+                is25pl032_flash_get_py(b);
+                break;
+            case 'Z':
+                flag = 0x16;
+                is25pl032_flash_get_pz(b);
+                break;
+            }
+            uint8_t *p_uint8 = (uint8_t *)output_buffer;
+            *p_uint8++ = 0x55;
+            *p_uint8++ = flag;
+            *p_uint8++ = 0x54;
+            *p_uint8++ = 0x01;
+            *p_uint8++ = 0x01;
+            for (uint8_t k = 0; k < 5; k++)
+            {
+                p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&b[k], 4);
+            }
+            *p_uint8++ = 0x54;
+            *p_uint8++ = flag;
+            *p_uint8++ = 0x55;
+            sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+            isSend = 0;
+        }
+    }
 
     if (receiveMsg[0] == 'G' && receiveMsg[1] == 'V' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
     {
@@ -1049,7 +1056,7 @@ void send_msg(void)
         sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
         isSend = 0;
     }
-		
+
     if (receiveMsg[0] == 'P' && receiveMsg[1] == 'A' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
         // 设置泥浆脉冲数据定时发送时间
@@ -1080,7 +1087,7 @@ void send_msg(void)
         sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
         isSend = 0;
     }
-		
+
     if (receiveMsg[0] == 'S' && receiveMsg[1] == 'D' && receiveMsg[2] == 'C' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
         // 设置静态数据收集的时间
@@ -1097,7 +1104,7 @@ void send_msg(void)
         // 获取静态数据收集的时间
         uint32_t Static_data_collection = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0xF1;
+        uint8_t flag = 0x17;
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1111,7 +1118,7 @@ void send_msg(void)
         sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
         isSend = 0;
     }
-		
+
     if (receiveMsg[0] == 'N' && receiveMsg[1] == 'P' && receiveMsg[2] == 'G' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
         // 设置泥浆脉冲发送的组数
@@ -1128,7 +1135,7 @@ void send_msg(void)
         // 获取泥浆脉冲发送的组数
         uint32_t Number_of_pluse_group = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0xF2;
+        uint8_t flag = 0x18;
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1141,6 +1148,82 @@ void send_msg(void)
         *p_uint8++ = 0x55;
         sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
         isSend = 0;
+    }
+
+    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'O' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
+    {
+        // 设置低功耗状态
+        uint32_t val = atoi((const char *)&receiveMsg[3]);
+        if (val > 1)
+            goto error;
+        is25pl032_flash_set_idle_hook_enable(val);
+        isSend = 0;
+        goto ok;
+    }
+
+    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'O' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
+    {
+        // 获取低功耗状态
+        uint32_t idle_hook_enable = 0;
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x19; // 更新命令标识
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+        idle_hook_enable = is25pl032_flash_get_idle_hook_enable();
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&idle_hook_enable, 4);
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+
+    // 读取校准数据命令 CHSR
+    if (receiveMsg[0] == 'C' && receiveMsg[1] == 'H' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
+    {
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x1A; // 校准数据读取命令标识
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+
+        // 读取校准数据
+        float calibration_data = is25pl032_flash_get_calibration_data();
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&calibration_data, 4);
+
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+
+    // 写入校准数据命令 CHSW
+    if (receiveMsg[0] == 'C' && receiveMsg[1] == 'H' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
+    {
+        char *data = (char *)receiveMsg + 4;
+        uint8_t temp[24];
+        uint8_t tempIndex = 0;
+        uint8_t dataIndex = 0;
+
+        // 解析校准数据
+        tempIndex = 0;
+        while (data[dataIndex] != '\0')
+        {
+            temp[tempIndex++] = data[dataIndex++];
+        }
+        temp[tempIndex] = '\0';
+
+        // 写入校准数据
+        float calibration_data = atof((const char *)temp);
+        is25pl032_flash_set_calibration_data(calibration_data);
+        isSend = 0;
+        goto ok;
     }
 
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'T' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
@@ -1159,7 +1242,7 @@ void send_msg(void)
         // 获取振动阈值
         float vibration_threshold = 0.0f;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0xF3;
+        uint8_t flag = 0x1B; // 更新命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1190,7 +1273,7 @@ void send_msg(void)
         // 获取振动灵敏度
         uint32_t vibration_sensitivity = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0xF4;
+        uint8_t flag = 0x1C; // 更新命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;

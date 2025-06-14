@@ -438,7 +438,7 @@ static void on_100ms_timer_event(void)
             if (get_vibrating_flag())
                 currentMotionState = 1;
 
-            mud_pulse_update_data(&mud_pulse, &interval_info, &sensor_data, currentMotionState);
+            mud_pulse_update_data(&mud_pulse, currentMotionState);
         }
 
         // 保存LOG
@@ -480,7 +480,7 @@ static void on_100ms_timer_event(void)
             log.inc6_avg = interval_info.good_inc_avg;
 
             // 将inc_hs_data中的数据赋值给log结构体
-            log.hs = inc_hs_data.hs;
+            log.hs = inc_hs_data.hs - is25pl032_flash_get_calibration_data();
 
             // log.roll = sum_roll / 1000;
             // log.diff_t = 0;
