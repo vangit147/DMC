@@ -95,6 +95,11 @@ void set_downhole(int val)
 {
     downhole = val;
 }
+
+int8_t get_downhole()
+{
+    return downhole;
+}
 /**
   *******************************************************************************
   * @Description: 应用层钩子函数
@@ -970,6 +975,7 @@ void main_task(void *p)
         }
         if (downhole > 0 && xTaskGetTickCount() - start_ticket > 20 * 1000)
         {
+            set_downhole(2);
             break;
         }
 
