@@ -191,7 +191,9 @@ void send_msg(void)
         ie1 = inc_hs_data.inc1;
         ie2 = inc_hs_data.inc2;
         ie6 = inc_hs_data.good_inc;
-        hs = inc_hs_data.hs;
+        hs = inc_hs_data.hs - is25pl032_flash_get_calibration_data();
+        if(hs<0)
+            hs = 360 + hs;
 
         y_radius = algorithm_data.ry;
         ofx = algorithm_setting.acc_x_offset;
