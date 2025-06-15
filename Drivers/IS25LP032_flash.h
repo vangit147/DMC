@@ -653,6 +653,15 @@ extern "C"
      *******************************************************************************
      */
     uint32_t is25pl032_flash_set_calibration_data(float calibration_data);
+    /**
+     *******************************************************************************
+     * @Description: 获取校准高边后的数据，用于debug跟踪调试
+     * @Parameters : hs - 要校准的高边数据
+     * @RetValue   : 无
+     * @Note       : 获取校准高边后的数据，用于debug跟踪调试
+     *******************************************************************************
+     */
+    void is25pl032_flash_get_calibrated_high_data(double hs);
 
 #ifdef __cplusplus
 }

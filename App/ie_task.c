@@ -562,6 +562,8 @@ void compute_ie()
 
     inc_hs_data.hs = local_hs;
     
+    is25pl032_flash_get_calibrated_high_data(inc_hs_data.hs);
+
     // 中位数滤波处理
     // 将当前值存入缓冲区
     inc_hs_data.inc1_buffer[inc_hs_data.buffer_index] = inc_hs_data.inc1_prefilter;
