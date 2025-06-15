@@ -412,10 +412,10 @@ static void on_100ms_timer_event(void)
     start_and_get_adc_result();
 
     // 获取震动状态
-    checking_vibrating_gpio();
-#ifndef ADXL357_VIBRATION_TEST
-    checking_vibrating_adxl357();
-#endif
+//    checking_vibrating_gpio();
+//#ifndef ADXL357_VIBRATION_TEST
+//    checking_vibrating_adxl357();
+//#endif
 
     // 每秒更新一次数据
     rtc_timeout++;
@@ -430,16 +430,16 @@ static void on_100ms_timer_event(void)
         update_total_time_per_temp(sensor_data.t_C);
 
         // 更新泥浆脉冲数据
-        if (!mud_pulse.state.double_stage)
-        {
-            uint8_t currentMotionState = 0;
+//        if (!mud_pulse.state.double_stage)
+//        {
+//            uint8_t currentMotionState = 0;
 
-            // 在震动时才发送泥浆脉冲
-            if (get_vibrating_flag())
-                currentMotionState = 1;
+//            // 在震动时才发送泥浆脉冲
+//            if (get_vibrating_flag())
+//                currentMotionState = 1;
 
-            mud_pulse_update_data(&mud_pulse, currentMotionState);
-        }
+//            mud_pulse_update_data(&mud_pulse, currentMotionState);
+//        }
 
         // 保存LOG
         if (log_period)
@@ -927,7 +927,7 @@ void main_task(void *p)
     uint32_t start_ticket = xTaskGetTickCount();
 
     // 初始化泥浆脉冲
-    mud_pulse_init(&mud_pulse);
+//    mud_pulse_init(&mud_pulse);
 
     lpuart1_rx_timer = xTimerCreate("lpuart_rx_timer", 10, 0, 0, timer_lpuart1_rx_cb);
     lpuart2_rx_timer = xTimerCreate("lpuart2_rx_timer", 10, 0, 0, lpuart2_rx_timer_cb);
@@ -1007,9 +1007,9 @@ void main_task(void *p)
             handle_uart_msg(UART1_rx_buffer, &UART1_rx_data_len);
     }
 
-    xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
+//    xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
     // 启动泥浆脉冲
-    mud_pulse_start_tx(&mud_pulse);
+//    mud_pulse_start_tx(&mud_pulse);
     xTimerStart(xTimerCreate("timer_send_dbg_data_cb", 100, 1, 0, timer_send_dbg_data_cb), 1000);
 
     // Enter main loop
