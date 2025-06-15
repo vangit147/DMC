@@ -1181,7 +1181,7 @@ void send_msg(void)
         isSend = 0;
     }
 
-    // 读取校准数据命令 CHSR
+    // 读取校准数据命令 CHS=?
     if (receiveMsg[0] == 'C' && receiveMsg[1] == 'H' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
     {
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
@@ -1203,7 +1203,7 @@ void send_msg(void)
         isSend = 0;
     }
 
-    // 写入校准数据命令 CHSW
+    // 写入校准数据命令 CHS=*
     if (receiveMsg[0] == 'C' && receiveMsg[1] == 'H' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
         char *data = (char *)receiveMsg + 4;
