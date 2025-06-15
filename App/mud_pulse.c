@@ -42,22 +42,27 @@ int32_t mud_pulse_start_tx(mud_pulse_t *pulse)
     return 0;
 }
 
-// 更新状态
-void mud_pulse_update_state(mud_pulse_t *pulse)
+// 更新led状态
+void update_led_state()
 {
     static uint8_t led;
     static uint32_t counter;
 
-    if (!pulse || pulse->state.tx_started == 0)
-        return;
-
     counter++;
-    if (counter >= pulse->config.timer_hz / 10)
+    //默认pulse->config.timer_hz = 100
+    if (counter >= 100 / 10)
     {
         counter = 0;
         led ^= 1;
         PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, led);
     }
+}
+
+// 更新状态
+void mud_pulse_update_state(mud_pulse_t *pulse)
+{
+    if (!pulse || pulse->state.tx_started == 0)
+        return;
 
     /*当前脉冲未发送完毕*/
     if (pulse->data.curr_duration > 1)
@@ -106,6 +111,9 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
 // 定时器中断处理
 void mud_pulse_timer_isr(mud_pulse_t *pulse)
 {
+    if(get_downhole()==2)
+        update_led_state();
+
     if (!pulse)
         return;
 
