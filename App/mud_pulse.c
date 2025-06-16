@@ -339,7 +339,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
             pulse->data.curr_duration = pulse->data.tx_buffer[index - 2];
             pulse->state.tx_request = 1;
 
-            if (pulse->collect.count == 30)
+            if (pulse->collect.count == pulse->config.static_collection_time)
             {
                 pulse->data.tx_buffer[index] = 34 * pulse->config.timer_hz;
                 index += 2;
@@ -361,7 +361,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
                     avg_temp = 0.0f;
                 if (avg_temp > 180.0f)
                     avg_temp = 180.0f;
-                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * avg_temp / 180.0f + 5;
+                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + 8.0f * pulse->config.timer_hz * avg_temp / 180.0f;
                 index += 2;
 
                 // 高边
@@ -375,7 +375,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
                     avg_voltage = 20.0f;
                 if (avg_voltage > 36.0f)
                     avg_voltage = 36.0f;
-                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + pulse->config.timer_hz * (avg_voltage - 20.0f) / 2.0f + 5;
+                pulse->data.tx_buffer[index] = 19 * pulse->config.timer_hz + pulse->config.timer_hz * (avg_voltage - 20.0f) / 2.0f;
                 index += 2;
 
                 pulse->data.buffer_len = index;
