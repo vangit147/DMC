@@ -931,9 +931,6 @@ void main_task(void *p)
     main_task_handle = xTaskGetCurrentTaskHandle();
     uint32_t start_ticket = xTaskGetTickCount();
 
-    // 初始化泥浆脉冲
-    mud_pulse_init(&mud_pulse);
-
     lpuart1_rx_timer = xTimerCreate("lpuart_rx_timer", 10, 0, 0, timer_lpuart1_rx_cb);
     lpuart2_rx_timer = xTimerCreate("lpuart2_rx_timer", 10, 0, 0, lpuart2_rx_timer_cb);
 
@@ -943,6 +940,9 @@ void main_task(void *p)
     load_algorithm_setting_from_flash();
     // 测试用配置设置
     // setting_for_test();
+
+    // 初始化泥浆脉冲
+    mud_pulse_init(&mud_pulse);
 
     if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680 || algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
     {
