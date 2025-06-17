@@ -1063,7 +1063,7 @@ void send_msg(void)
     {
         // 设置泥浆脉冲数据定时发送时间
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val > 36000)
+        if (val > 36000 && val < 10800)
             goto error;
         is25pl032_flash_set_Pulse_auto_send(val);
         isSend = 0;

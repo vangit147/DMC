@@ -2,8 +2,8 @@
  ******************************************************************************
  * @file    mud_pulse.h
  * @author  Gordon Li
- * @version V1.15
- * @date    2025-04-05
+ * @version V1.16
+ * @date    2024-04-25
  * @brief   泥浆脉冲控制模块头文件
  *
  * @note    实现了泥浆脉冲的发送控制，支持配置参数和状态管理
@@ -39,14 +39,15 @@ typedef __packed struct
 // 泥浆脉冲状态结构体
 typedef __packed struct
 {
-    uint8_t double_stage;         // 双脉冲阶段
-    uint8_t tx_request;           // 发送请求
-    uint32_t current_retry_count; // 当前重试计数
-    uint32_t no_vibration_period; // 无振动周期
-    uint32_t period_counter;      // 周期计数
-    uint8_t last_motion_state;    // 上次运动状态
-    uint8_t remaining_groups;     // 剩余要发送的组数
-    uint8_t tx_started;           // 发送启动标志
+    uint8_t double_stage;           // 双脉冲阶段
+    uint8_t tx_request;             // 发送请求
+    uint32_t current_retry_count;   // 当前重试计数
+    uint32_t no_vibration_period;   // 无振动周期
+    uint32_t period_counter;        // 周期计数
+    uint8_t last_motion_state;      // 上次运动状态
+    uint8_t remaining_groups;       // 剩余要发送的组数
+    uint8_t tx_started;             // 发送启动标志
+    uint8_t vibration_persist_flag; // 持续振动标志，振动中静止状态不会超过60s
 } mud_pulse_state_t;
 
 // 泥浆脉冲数据结构体
