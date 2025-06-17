@@ -180,7 +180,7 @@ static const CFG_T default_cfg = {
         .max_retry_count = 1,         // 1次重试
         .number_of_groups = 3,        // 3组发送
         .static_collection_time = 30, // 30秒静态数据采集时间
-        .auto_send_period = 900       // 900秒定时发送时间
+        .auto_send_period = 10800       // 10800秒定时发送时间
     },
     .calibration_data = 0.0f
 };

@@ -82,28 +82,32 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
         pulse->data.curr_index = 0;
         pulse->data.curr_duration = INT_MAX;
 
-        if (pulse->state.tx_request)
+        if (pulse->state.vibration_persist_flag)
         {
             pulse->state.current_retry_count--;
             if (pulse->state.current_retry_count == 0)
-                pulse->state.tx_request = 0;
+            {
+                pulse->state.remaining_groups--;
+                if (pulse->state.remaining_groups != 0)
+                {
+                    // 延迟60s再发送下一次的retry_count组数据
+                    pulse->state.current_retry_count = pulse->config.max_retry_count;
+                    // 持续振动中，每组泥浆脉冲数据发送的时间间隔
+                    pulse->data.tx_buffer[pulse->data.curr_index] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
+                    pulse->data.tx_buffer[pulse->data.curr_index + 1] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
+                    pulse->data.curr_duration = pulse->data.tx_buffer[pulse->data.curr_index];
+                }
+                else
+                    pulse->state.tx_request = 0;
+            }
             else
             {
                 pulse->data.curr_index = 2;
                 pulse->data.curr_duration = pulse->data.tx_buffer[pulse->data.curr_index];
             }
-            if (pulse->state.remaining_groups != 0 && pulse->state.current_retry_count == 0)
-            {
-                // 延迟60s再发送下一次的retry_count组数据
-                pulse->state.tx_request = 1;
-                pulse->state.remaining_groups--;
-                pulse->state.current_retry_count = pulse->config.max_retry_count;
-                // 持续振动中，每组泥浆脉冲数据发送的时间间隔
-                pulse->data.tx_buffer[pulse->data.curr_index] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
-                pulse->data.tx_buffer[pulse->data.curr_index + 1] = (pulse->config.group_interval / 2) * pulse->config.timer_hz;
-                pulse->data.curr_duration = pulse->data.tx_buffer[pulse->data.curr_index];
-            }
         }
+        else
+            pulse->state.tx_request = 0;
     }
     PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulse->data.curr_index & 0x1);
 }
@@ -223,13 +227,13 @@ void mud_pulse_init(mud_pulse_t *pulse)
     }
 
     // 检查定时发送时间
-    if (auto_send_period >= 60 && auto_send_period <= 36000)
+    if (auto_send_period >= 10800 && auto_send_period <= 36000)
     {
         pulse->config.auto_send_period = auto_send_period;
     }
     else
     {
-        pulse->config.auto_send_period = 900; // 默认值
+        pulse->config.auto_send_period = 10800; // 默认值
     }
 
     // 检查静态数据采集时间
@@ -254,6 +258,7 @@ void mud_pulse_init(mud_pulse_t *pulse)
     pulse->state.last_motion_state = 0;
     pulse->state.remaining_groups = 0;
     pulse->state.tx_started = 0;
+    pulse->state.vibration_persist_flag = 0;
 
     // 初始化数据
     pulse->data.curr_duration = 0;
@@ -331,6 +336,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
             pulse->state.current_retry_count = pulse->config.max_retry_count;
             // 振动后，连续的静止时间。若振动后连续静止的时间超过此数据，则认为目前静止了
             pulse->state.no_vibration_period = pulse->config.no_vibration_time;
+            pulse->state.vibration_persist_flag = 1;
 
             // 准备发送缓冲区
             // 开泵后等待泥浆脉冲压强准备好的时间
@@ -391,7 +397,7 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
         {
             // 在当连续静止一分钟时，则认为已经处于非振动状态
             if (pulse->state.no_vibration_period == 0)
-                pulse->state.remaining_groups = 0;
+                pulse->state.vibration_persist_flag = 0;
             else
                 pulse->state.no_vibration_period--;
         }
