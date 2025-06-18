@@ -182,8 +182,8 @@ static const CFG_T default_cfg = {
         .send_delay = 60,             // 60秒发送延时
         .max_retry_count = 1,         // 1次重试
         .number_of_groups = 3,        // 3组发送
-        .static_collection_time = 30, // 30秒静态数据采集时间
-        .auto_send_period = 10800       // 10800秒定时发送时间
+        .static_collection_time = 40, // 40秒静态数据采集时间（前20秒不计算均值）
+        .auto_send_period = 10800     // 10800秒定时发送时间
     },
     .calibration_data = 0.0f,
     .inclination_log_update_period = 10, // 默认10秒

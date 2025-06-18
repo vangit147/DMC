@@ -1094,7 +1094,7 @@ void send_msg(void)
     {
         // 设置静态数据收集的时间
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val > 60)
+        if (val <= 20 || val > 60)
             goto error;
         is25pl032_flash_set_Static_data_collection(val);
         isSend = 0;

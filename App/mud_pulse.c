@@ -49,7 +49,7 @@ void update_led_state()
     static uint32_t counter;
 
     counter++;
-    //默认pulse->config.timer_hz = 100
+    // 默认pulse->config.timer_hz = 100
     if (counter >= 100 / 10)
     {
         counter = 0;
@@ -115,7 +115,7 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
 // 定时器中断处理
 void mud_pulse_timer_isr(mud_pulse_t *pulse)
 {
-    if(get_downhole()==2)
+    if (get_downhole() == 2)
         update_led_state();
 
     if (!pulse)
@@ -237,13 +237,13 @@ void mud_pulse_init(mud_pulse_t *pulse)
     }
 
     // 检查静态数据采集时间
-    if (static_collection_time >= 10 && static_collection_time <= 60)
+    if (static_collection_time > 20 && static_collection_time <= 60)
     {
         pulse->config.static_collection_time = static_collection_time;
     }
     else
     {
-        pulse->config.static_collection_time = 30; // 默认值
+        pulse->config.static_collection_time = 40; // 默认值
     }
 
     // 设置无振动时间默认值
@@ -282,28 +282,34 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
     float temp_voltage;
     inclination_hs_t hs;
 
-    // 只获取静态后30秒内井斜、温度、高边、电压数据的平均值
-    // 默认情况下，在每次振动前都会静止一分钟
+    // 只获取静态后指定时间内井斜、温度、高边、电压数据的平均值
+    // 前20秒等待数据稳定，不收集数据也不计算均值
     // 更新数据采集
     if (currentMotionState == 0 && pulse->collect.count < pulse->config.static_collection_time)
     {
-        // 更新最小值
-        if (interval_info.good_inc_avg < pulse->collect.min_ie)
-            pulse->collect.min_ie = interval_info.good_inc_avg;
-        if (sensor_data.t_C < pulse->collect.min_temp)
-            pulse->collect.min_temp = sensor_data.t_C;
-        get_inc_hs(&hs);
-        if (hs.hs < pulse->collect.min_hs)
-            pulse->collect.min_hs = hs.hs;
-        temp_voltage = get_36V_voltage();
-        if (temp_voltage < pulse->collect.min_voltage)
-            pulse->collect.min_voltage = temp_voltage;
+        // 前20秒等待数据稳定，只计数
+        if (pulse->collect.count > 20)
+        {
+            // 数据稳定后开始收集和计算
+            // 更新最小值
+            if (interval_info.good_inc_avg < pulse->collect.min_ie)
+                pulse->collect.min_ie = interval_info.good_inc_avg;
+            if (sensor_data.t_C < pulse->collect.min_temp)
+                pulse->collect.min_temp = sensor_data.t_C;
+            get_inc_hs(&hs);
+            if (hs.hs < pulse->collect.min_hs)
+                pulse->collect.min_hs = hs.hs;
+            temp_voltage = get_36V_voltage();
+            if (temp_voltage < pulse->collect.min_voltage)
+                pulse->collect.min_voltage = temp_voltage;
 
-        // 更新平均值
-        pulse->collect.avg_ie = (pulse->collect.avg_ie * pulse->collect.count + pulse->collect.min_ie) / (pulse->collect.count + 1);
-        pulse->collect.avg_temp = (pulse->collect.avg_temp * pulse->collect.count + pulse->collect.min_temp) / (pulse->collect.count + 1);
-        pulse->collect.avg_hs = (pulse->collect.avg_hs * pulse->collect.count + pulse->collect.min_hs) / (pulse->collect.count + 1);
-        pulse->collect.avg_voltage = (pulse->collect.avg_voltage * pulse->collect.count + pulse->collect.min_voltage) / (pulse->collect.count + 1);
+            // 计算均值
+            uint32_t valid_count = pulse->collect.count - 20; // 有效数据计数（从1开始）
+            pulse->collect.avg_ie = (pulse->collect.avg_ie * (valid_count - 1) + pulse->collect.min_ie) / valid_count;
+            pulse->collect.avg_temp = (pulse->collect.avg_temp * (valid_count - 1) + pulse->collect.min_temp) / valid_count;
+            pulse->collect.avg_hs = (pulse->collect.avg_hs * (valid_count - 1) + pulse->collect.min_hs) / valid_count;
+            pulse->collect.avg_voltage = (pulse->collect.avg_voltage * (valid_count - 1) + pulse->collect.min_voltage) / valid_count;
+        }
         pulse->collect.count++;
     }
 
@@ -312,12 +318,12 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
         pulse->state.period_counter--;
     else
     {
-        // 默认情况下，在每次振动前都会静止一分钟，所以currentMotionState为1时，account只能为0
-        if (currentMotionState == 0 && pulse->collect.count < 30)
-            pulse->state.period_counter = 30 - pulse->collect.count;
+        // 确保有足够的数据进行均值计算（至少20秒数据）
+        if (currentMotionState == 0 && pulse->collect.count < pulse->config.static_collection_time)
+            pulse->state.period_counter = pulse->config.static_collection_time - pulse->collect.count;
         else
         {
-            // 1. currentMotionState==0 && count == 30
+            // 1. currentMotionState==0 && count == static_collection_time
             // 2. currentMotionState==1 && count == 0
             pulse->state.period_counter = pulse->config.auto_send_period;
             currentMotionState = 1;
