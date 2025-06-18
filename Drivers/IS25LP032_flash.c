@@ -138,7 +138,6 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     uint32_t vibration_sensitivity; // 振动灵敏度
     uint32_t idle_hook_enable;      // 低功耗状态
     float calibration_data;         // 添加校准数据变量
-    float calibrated_high_data;         // 添加校准数据后变量
 } CFG_T;
 
 // 默认参数
@@ -183,8 +182,7 @@ static const CFG_T default_cfg = {
         .static_collection_time = 30, // 30秒静态数据采集时间
         .auto_send_period = 900       // 900秒定时发送时间
     },
-    .calibration_data = 0.0f,
-    .calibrated_high_data = 0.0f
+    .calibration_data = 0.0f
 };
 
 typedef __packed union
@@ -1931,19 +1929,4 @@ uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
     dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
     is25pl032_flash_save_dev_cfg();
     return 0;
-}
-
-/**
- *******************************************************************************
- * @Description: 获取校准高边后的数据，用于debug跟踪调试
- * @Parameters : hs - 要校准的高边数据
- * @RetValue   : 无
- * @Note       : 获取校准高边后的数据，用于debug跟踪调试
- *******************************************************************************
- */
-void is25pl032_flash_get_calibrated_high_data(double hs)
-{
-    dev_cfg.u_cfg.cfg.calibrated_high_data = hs - dev_cfg.u_cfg.cfg.calibration_data;
-    if(dev_cfg.u_cfg.cfg.calibrated_high_data < 0)
-        dev_cfg.u_cfg.cfg.calibrated_high_data = 360 + dev_cfg.u_cfg.cfg.calibrated_high_data;
 }
