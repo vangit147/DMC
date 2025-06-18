@@ -134,10 +134,12 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     /* 泥浆脉冲设置 */
     mud_pulse_config_t mud_pulse_cfg; // 泥浆脉冲配置
     /* 振动参数设置 */
-    float vibration_threshold;      // 振动阈值
-    uint32_t vibration_sensitivity; // 振动灵敏度
-    uint32_t idle_hook_enable;      // 低功耗状态
-    float calibration_data;         // 添加校准数据变量
+    float vibration_threshold;              // 振动阈值
+    uint32_t vibration_sensitivity;         // 振动灵敏度
+    uint32_t idle_hook_enable;              // 低功耗状态
+    float calibration_data;                 // 添加校准数据变量
+    uint32_t inclination_log_update_period; // 井斜角度变化时的日志更新频率（秒）
+    float inclination_angle_switch;         // 改变日志更新频率的井斜角度（度）
 } CFG_T;
 
 // 默认参数
@@ -182,7 +184,9 @@ static const CFG_T default_cfg = {
         .static_collection_time = 30, // 30秒静态数据采集时间
         .auto_send_period = 10800       // 10800秒定时发送时间
     },
-    .calibration_data = 0.0f
+    .calibration_data = 0.0f,
+    .inclination_log_update_period = 10, // 默认10秒
+    .inclination_angle_switch = 30.0f    // 默认30度
 };
 
 typedef __packed union
@@ -1929,4 +1933,58 @@ uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
     dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
     is25pl032_flash_save_dev_cfg();
     return 0;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取井斜角度变化时的日志更新频率
+ * @Parameters : 无
+ * @RetValue   : 井斜角度变化时的日志更新频率（秒）
+ * @Note       : 获取井斜角度变化时的日志更新频率设置值
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_get_inclination_log_update_period(void)
+{
+    return dev_cfg.u_cfg.cfg.inclination_log_update_period;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置井斜角度变化时的日志更新频率
+ * @Parameters : period - 井斜角度变化时的日志更新频率（秒）
+ * @RetValue   : 无
+ * @Note       : 设置井斜角度变化时的日志更新频率
+ *******************************************************************************
+ */
+void is25pl032_flash_set_inclination_log_update_period(uint32_t period)
+{
+    dev_cfg.u_cfg.cfg.inclination_log_update_period = period;
+    is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取改变日志更新频率的井斜角度
+ * @Parameters : 无
+ * @RetValue   : 改变日志更新频率的井斜角度（度）
+ * @Note       : 获取改变日志更新频率的井斜角度设置值
+ *******************************************************************************
+ */
+float is25pl032_flash_get_inclination_angle_switch(void)
+{
+    return dev_cfg.u_cfg.cfg.inclination_angle_switch;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置改变日志更新频率的井斜角度
+ * @Parameters : angle - 改变日志更新频率的井斜角度（度）
+ * @RetValue   : 无
+ * @Note       : 设置改变日志更新频率的井斜角度
+ *******************************************************************************
+ */
+void is25pl032_flash_set_inclination_angle_switch(float angle)
+{
+    dev_cfg.u_cfg.cfg.inclination_angle_switch = angle;
+    is25pl032_flash_save_dev_cfg();
 }

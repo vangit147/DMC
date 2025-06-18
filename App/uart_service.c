@@ -1228,6 +1228,56 @@ void send_msg(void)
         goto ok;
     }
 
+    if (receiveMsg[0] == 'I' && receiveMsg[1] == 'F' && receiveMsg[2] == 'U' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
+    {
+        uint32_t period = is25pl032_flash_get_inclination_log_update_period();
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x1B;
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&period, 4);
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+
+    if (receiveMsg[0] == 'I' && receiveMsg[1] == 'F' && receiveMsg[2] == 'U' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
+    {
+        uint32_t period = atoi((const char *)&receiveMsg[4]);
+        is25pl032_flash_set_inclination_log_update_period(period);
+        goto ok;
+    }
+
+    if (receiveMsg[0] == 'I' && receiveMsg[1] == 'A' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
+    {
+        float angle = is25pl032_flash_get_inclination_angle_switch();
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x1C;
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&angle, 4);
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+
+    if (receiveMsg[0] == 'I' && receiveMsg[1] == 'A' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
+    {
+        float angle = atof((const char *)&receiveMsg[4]);
+        is25pl032_flash_set_inclination_angle_switch(angle);
+        goto ok;
+    }
+
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'T' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
     {
         // 设置振动阈值
@@ -1244,7 +1294,7 @@ void send_msg(void)
         // 获取振动阈值
         float vibration_threshold = 0.0f;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1B; // 更新命令标识
+        uint8_t flag = 0x1D; // 更新命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1275,7 +1325,7 @@ void send_msg(void)
         // 获取振动灵敏度
         uint32_t vibration_sensitivity = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1C; // 更新命令标识
+        uint8_t flag = 0x1F; // 更新命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;

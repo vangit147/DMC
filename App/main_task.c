@@ -447,6 +447,19 @@ static void on_100ms_timer_event(void)
         }
 
         // 保存LOG
+        // 自动切换日志周期：根据当前井斜角度判断
+        float current_inclination = inc_hs_data.good_inc; // 也可用interval_info.good_inc_avg
+        float switch_angle = is25pl032_flash_get_inclination_angle_switch();
+        uint32_t new_period = is25pl032_flash_get_inclination_log_update_period();
+        uint8_t default_period = is25pl032_flash_get_log_period();
+        if (current_inclination >= switch_angle)
+        {
+            algorithm_setting.log_period_time = new_period;
+        }
+        else
+        {
+            algorithm_setting.log_period_time = default_period;
+        }
         if (log_period)
             log_period--;
         if (log_period == 0)
