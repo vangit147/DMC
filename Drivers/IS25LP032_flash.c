@@ -15,6 +15,7 @@
 #include "IS25LP032_flash.h"
 #include "mud_pulse.h"
 
+#define HIGH_SIDE_MEATURE "HS250623_0.0"
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
 #define FLASH_WREN 0X06
@@ -39,7 +40,7 @@ FLASH 数据区定义
 +--------------------------+
 
 */
-#define FLASH_INITED_FLAG 0XABEEBEE7
+#define FLASH_INITED_FLAG 0XABEEBEE6
 #define FLASH_TOTAL_SIZE (4 * 1024 * 1024)
 // CFG
 #define DEVICE_CFG_FLAG 0XBEE1BEEE
@@ -147,7 +148,7 @@ static const CFG_T default_cfg = {
     .device_cfg_tag = DEVICE_CFG_FLAG,
     .device_cfg_sn = 1,
     .log_saved_period = 60,
-    .acc_sensor_type = 0,  // 默认使用IAM-20680HT加速度计
+    .acc_sensor_type = 1,  // 默认使用VS1005加速度计
     .gyro_sensor_type = 0, // 默认使用IAM-20680HT陀螺仪
     .offset = {0.0f, 0.0f},
     .xr_limit = 0.0015f,
@@ -1430,7 +1431,7 @@ void is25pl032_flash_get_proid(char *pro_id)
 
 void is25pl032_flash_get_version(char *version)
 {
-    memcpy(version, "DMC250429_04.2", sizeof(dev_cfg.u_cfg.cfg.version));
+    memcpy(version, HIGH_SIDE_MEATURE, sizeof(dev_cfg.u_cfg.cfg.version));
 }
 /**
   *******************************************************************************
