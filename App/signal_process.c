@@ -11,7 +11,7 @@
  * Gordon              2025.04.07                   重构代码，添加滤波、传感器选择和迟滞逻辑
  * Gordon              2025.05.18                   修改algorithm_setting中加速度计和陀螺仪数据成员变量定义顺序，方便现行的flashDB按照key-value进行简化存储
                                                     取消algorithm_setting中degrees阶数定义，通过下发高阶为0参数进行处理，当阶数小于5时，高阶系数为0，不影响计算结果
-
+ * Gordon               2025.06.30                  修改#include "../drivers/ads1278.h"为#include "../drivers/ads1278_imu.h"  
  *****************************************************************************
  */
 /************* Included files, Macros, Various and Declarations ***************/
@@ -21,7 +21,7 @@
 //#include "timers.h"
 //#include "main.h"  // 这个已经包含了spi.h
 #include "ie_task.h"  // 添加ie_task.h头文件，用于访问sensor_data结构体
-#include "ads1278-2.h"  // 使用新版本的ADS1278头文件
+#include "../drivers/ads1278_imu.h"  // 使用新版本的ADS1278头文件 2025.06.30
 //#include "../Common/fir_config.h"  // 添加FIR滤波器配置头文件
 //#include "IS25LP032_flash.h"  // 添加Flash存储头文件
 
@@ -104,9 +104,9 @@ void fitting(float t)
         }
         
         // 应用补偿
-        sensor_signal.ax_raw_fit = sensor_signal.ax_raw - compensation;
-        sensor_signal.ay_raw_fit = sensor_signal.ay_raw - compensation;
-        sensor_signal.az_raw_fit = sensor_signal.az_raw - compensation;
+				if(axis==0)        sensor_signal.ax_raw_fit = sensor_signal.ax_raw - compensation;
+				else if(axis==1)   sensor_signal.ay_raw_fit = sensor_signal.ay_raw - compensation;
+				else     sensor_signal.az_raw_fit = sensor_signal.az_raw - compensation;
 			}
 		
 		//计算陀螺仪每轴的补偿值
@@ -119,10 +119,9 @@ void fitting(float t)
             compensation += algorithm_setting.degrees_gyro[axis * 6 + order] * t_power;
             t_power *= t;  // 计算下一个幂次
         }
-        				
-        sensor_signal.gx_raw_fit = sensor_signal.gx_raw - compensation;
-        sensor_signal.gy_raw_fit = sensor_signal.gy_raw - compensation;
-        sensor_signal.gz_raw_fit = sensor_signal.gz_raw - compensation;
+        if(axis==0) 	sensor_signal.gx_raw_fit = sensor_signal.gx_raw - compensation;
+				else if(axis==1)        sensor_signal.gy_raw_fit = sensor_signal.gy_raw - compensation;
+				else         sensor_signal.gz_raw_fit = sensor_signal.gz_raw - compensation;
     }
 }
 

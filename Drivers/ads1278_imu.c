@@ -16,7 +16,7 @@
 #include "main.h"
 #include "cpu.h"
 
-#include "ads1278-2.h"
+#include "ads1278_imu.h"
 
 #define ADC_SCAN_CHANNELS      4   //需采样4个ADC通道
 

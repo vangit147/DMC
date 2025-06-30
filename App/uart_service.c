@@ -18,7 +18,7 @@
 #include "uart_service.h"
 #include "main_task.h"
 #include "ie_task.h"
-#include "ads1278-2.h"
+#include "ads1278_imu.h"
 #include "IAM_20680HT.h"
 #include "signal_process.h"
 
