@@ -91,19 +91,12 @@ typedef struct {
 // 算法设置结构体
 typedef struct
 {
-    /* sensor_type */
-    uint8_t acc_sensor_type;  // 加速度计类型
-    uint8_t gyro_sensor_type;  // 陀螺仪类型
-    uint8_t mag_sensor_type;  // 磁力计类型
+    uint32_t log_period_time; // 日志周期，单位：秒
+
     /* 虚拟半径限 */
     float xr_limit;
     float yr_limit;
-    uint16_t log_period_time; // 日志周期，单位：秒
-    
-    /* 稳定时间阈值设置 */
-    int8_t max_peace_time_threshold; // 稳定时间阈值，用于统计在一个interval内超过该阈值的peace_time次数，默认值为5
 
-    
     /* 加速度计相关设置（顺序参考板间通信holdings 寄存器表格顺序，） */
     float ms_xx; // X-X轴MS矩阵系数
     float ms_xy; // X-Y轴MS矩阵系数
@@ -116,11 +109,11 @@ typedef struct
     float az_bias; // Z轴加速度计零偏，raw_data
     float acc_x_offset; // X轴加速度计装配误差，单位：g
     float acc_y_offset; // Y轴加速度计装配误差，单位：g
+
     //加速度计温补矩阵
     double degrees_acc[18]; //加速度计温漂数组
 
     float acc_z_offset; // Z轴加速度计装配误差，单位：g  //方便holdings 寄存器 flashDB key-value数据修改
-
 
     /* 陀螺仪相关设置 */
     float gx_scale; // X轴陀螺仪比例系数，raw_data -> dps
@@ -129,9 +122,12 @@ typedef struct
     float gx_bias; // X轴陀螺仪零偏，raw_data
     float gy_bias; // Y轴陀螺仪零偏，raw_data
     float gz_bias; // Z轴陀螺仪零偏，raw_data
+
     /* 多项式拟合参数 */
     double degrees_gyro[18]; // 多项式拟合系数数组: 默认5阶
 
+    /* 稳定时间阈值设置 */
+    int8_t max_peace_time_threshold; // 稳定时间阈值，用于统计在一个interval内超过该阈值的peace_time次数，默认值为5
 
     /* 温度补偿范围设置 */
     float t_comp_lower_limit; // 温度补偿下限，默认-20°C
@@ -139,6 +135,9 @@ typedef struct
     float t_scale;           // 温度比例系数
     float t_intercept;       // 温度截距
 
+    /* sensor_type */
+    uint8_t acc_sensor_type;  // 加速度计类型
+    uint8_t gyro_sensor_type;  // 陀螺仪类型
 } algorithm_setting_t;
 
 // 区间信息结构体
@@ -224,8 +223,6 @@ typedef struct
 } sensor_data_t;
 
 /* 全局变量声明 */
-extern interval_info_t interval_info;
-extern inclination_hs_t inc_hs_data;
 extern algorithm_setting_t algorithm_setting;
 extern TaskHandle_t ie_task_handle;
 extern algorithm_info_t algorithm_data;  // 添加algorithm_data全局变量声明

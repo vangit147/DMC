@@ -9,6 +9,8 @@
  * EDIT HISTORY:
  *   NAME                        DATE                      CONTENT
  * Gordon                       2025.05.05                    CREATE
+ * Gordon               2025.06.30                  修改#include "../drivers/ads1278.h"为#include "../drivers/ads1278_imu.h"  
+
  *****************************************************************************
  */
 #ifndef __SIGNAL_PROCESS_H__
@@ -19,7 +21,7 @@
 
 /* 项目头文件包含 */
 #include "IAM_20680HT.h"
-#include "ads1278-2.h"
+#include "ads1278_imu.h"  //2025.06.30
 //#include "ie_task.h"
 #include "../common/fir_config.h"
 

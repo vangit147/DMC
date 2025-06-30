@@ -41,7 +41,7 @@ extern "C" {
 #include "lpuart.h"
 #include "i2c.h"
 #include "spi.h"
-#include "ads1278-2.h"
+#include "ads1278_imu.h"
 #include "IAM_20680HT.h"
 #include "gpio_port.h"
 #include "timer.h"
