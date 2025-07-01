@@ -15,7 +15,7 @@
 #include "IS25LP032_flash.h"
 #include "mud_pulse.h"
 
-#define HIGH_SIDE_MEATURE "HS250623_0.0"
+#define HIGH_SIDE_MEATURE "HS250701_0.1"
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
 #define FLASH_WREN 0X06
