@@ -561,6 +561,8 @@ void compute_ie()
     }
 
     inc_hs_data.hs = local_hs;
+//    excel中计算高边的公式：
+//    =IF(ATAN2(-X轴数据,Y轴数据)*180/PI()<0,360+ATAN2(-X轴数据,Y轴数据)*180/PI(),ATAN2(-X轴数据,Y轴数据)*180/PI())
     
     // 中位数滤波处理
     // 将当前值存入缓冲区
