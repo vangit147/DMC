@@ -499,7 +499,8 @@ static void on_100ms_timer_event(void)
 
             // 将inc_hs_data中的数据赋值给log结构体
             log.hs = inc_hs_data.hs - is25pl032_flash_get_calibration_data();
-
+            if(log.hs<0)
+                log.hs = 360 + log.hs;
             // log.roll = sum_roll / 1000;
             // log.diff_t = 0;
 
