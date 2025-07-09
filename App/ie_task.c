@@ -545,7 +545,7 @@ void compute_ie()
 
     // 计算高边
     double local_hs;
-    float x = -sensor_data.ax_g;
+    float x = sensor_data.ax_g;
     float y = sensor_data.ay_g;
 
     // 使用atan2直接计算角度，返回值范围(-π, π]
