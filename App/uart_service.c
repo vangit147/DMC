@@ -1278,6 +1278,34 @@ void send_msg(void)
         goto ok;
     }
 
+    if (receiveMsg[0] == 'H' && receiveMsg[1] == 'S' && receiveMsg[2] == 'D' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
+    {
+        // 设置高边方向
+        uint8_t dir = receiveMsg[4] - '0';
+        if (dir > 1)
+            goto error;
+        is25pl032_flash_set_hs_direction(dir);
+        goto ok;
+    }
+    if (receiveMsg[0] == 'H' && receiveMsg[1] == 'S' && receiveMsg[2] == 'D' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
+    {
+        // 查询高边方向
+        uint8_t dir = is25pl032_flash_get_hs_direction();
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x1D;
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = dir;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'T' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
     {
         // 设置振动阈值
@@ -1294,7 +1322,7 @@ void send_msg(void)
         // 获取振动阈值
         float vibration_threshold = 0.0f;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1D; // 更新命令标识
+        uint8_t flag = 0x1E;
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1325,7 +1353,7 @@ void send_msg(void)
         // 获取振动灵敏度
         uint32_t vibration_sensitivity = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1F; // 更新命令标识
+        uint8_t flag = 0x1F;
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;

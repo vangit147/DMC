@@ -141,6 +141,7 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     float calibration_data;                 // 添加校准数据变量
     uint32_t inclination_log_update_period; // 井斜角度变化时的日志更新频率（秒）
     float inclination_angle_switch;         // 改变日志更新频率的井斜角度（度）
+    uint8_t hs_direction;                   // 高边方向控制，1=正向，0=反向
 } CFG_T;
 
 // 默认参数
@@ -187,7 +188,8 @@ static const CFG_T default_cfg = {
     },
     .calibration_data = 0.0f,
     .inclination_log_update_period = 10, // 默认10秒
-    .inclination_angle_switch = 30.0f    // 默认30度
+    .inclination_angle_switch = 30.0f,   // 默认30度
+    .hs_direction = 1,                   // 默认正向
 };
 
 typedef __packed union
@@ -1988,4 +1990,31 @@ void is25pl032_flash_set_inclination_angle_switch(float angle)
 {
     dev_cfg.u_cfg.cfg.inclination_angle_switch = angle;
     is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置高边方向控制参数
+ * @Parameters : dir - 高边方向（1=正向，0=反向）
+ * @RetValue   : 0-成功，-1-失败
+ * @Note       : 设置高边方向控制参数，并保存到Flash
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_hs_direction(uint8_t dir)
+{
+    dev_cfg.u_cfg.cfg.hs_direction = dir;
+    return is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取高边方向控制参数
+ * @Parameters : 无
+ * @RetValue   : 高边方向（1=正向，0=反向）
+ * @Note       : 获取高边方向控制参数
+ *******************************************************************************
+ */
+uint8_t is25pl032_flash_get_hs_direction(void)
+{
+    return dev_cfg.u_cfg.cfg.hs_direction;
 }
