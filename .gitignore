@@ -1,0 +1,8 @@
+# IDE and editor files
+.vscode/
+.cursor/
+
+# Build output
+MDK-ARM/inclinometer_dynamic.uvoptx
+MDK-ARM/inclinometer_dynamic.uvguix.*
+Out/
