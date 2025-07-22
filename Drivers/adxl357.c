@@ -53,6 +53,7 @@
 #define ADXL357_FREQUENCY_1MS 0x02    //1ms
 #define ADXL357_FREQUENCY_05MS 0x01   //0.5ms
 #define ADXL357_FREQUENCY_025MS 0x00   //0.25ms
+#define NORM 49526.6797
 
 static int32_t  raw_acc_x, raw_acc_y, raw_acc_z;
 static float    adxl357_acc_x, adxl357_acc_y, adxl357_acc_z;
@@ -162,6 +163,7 @@ static void on_adxl357_data_ready_event(void)
 {
     uint8_t         transfer_buffer[12];
     int32_t         acc_x, acc_y, acc_z;
+//    float         norm;
 
     transfer_buffer[0] = REG_TEMP2 << 1 | 1;
     spi0_cs2_transfer((uint8_t*)transfer_buffer, (uint8_t*)transfer_buffer, 12);
@@ -183,9 +185,14 @@ static void on_adxl357_data_ready_event(void)
     raw_acc_y = acc_y;
     raw_acc_z = acc_z;
 
-    adxl357_acc_x = raw_acc_x * 10.0f / (1 << 19);
-    adxl357_acc_y = raw_acc_y * 10.0f / (1 << 19);
-    adxl357_acc_z = raw_acc_z * 10.0f / (1 << 19);
+//    adxl357_acc_x = raw_acc_x * 10.0f / (1 << 19);
+//    adxl357_acc_y = raw_acc_y * 10.0f / (1 << 19);
+//    adxl357_acc_z = raw_acc_z * 10.0f / (1 << 19);
+
+//    norm = sqrtf((float)raw_acc_x * (float)raw_acc_x + (float)raw_acc_y * (float)raw_acc_y + (float)raw_acc_z * (float)raw_acc_z);
+    adxl357_acc_x = (float)raw_acc_x / NORM;
+    adxl357_acc_y = (float)raw_acc_y / NORM;
+    adxl357_acc_z = (float)raw_acc_z / NORM;
 }
 
 void adxl357_task(void* p)
