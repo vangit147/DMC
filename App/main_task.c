@@ -821,6 +821,13 @@ void load_algorithm_setting_from_flash(void)
     algorithm_setting.ms_yz = 0.0f;  // Y-Z轴MS矩阵系数
     algorithm_setting.ms_zz = 0.000000628612f;  // Z-Z轴MS矩阵系数
 #endif
+
+    // 加载ADXL357归一化因子NORM
+    float flash_norm = is25pl032_flash_get_norm();
+    if (flash_norm > 0.0f)
+        g_norm = flash_norm;
+    else
+        g_norm = NORM;
 }
 
 /**
@@ -953,7 +960,8 @@ void main_task(void *p)
     xTaskCreate(signal_process_task, "signal_process_task", 256, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
-
+    xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
+		
     // 处理上位机事件
     waiting_for_uart2_timeout_tmr = xTimerCreate("uart2_timeout_tmr", 20 * 1000, 0, 0, timer_waiting_for_uart2_timeout_cb);
     xTimerStart(waiting_for_uart2_timeout_tmr, 1000);
@@ -1013,7 +1021,7 @@ void main_task(void *p)
             handle_uart_msg(UART1_rx_buffer, &UART1_rx_data_len);
     }
 
-    xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
+//    xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
     // 启动泥浆脉冲
     mud_pulse_start_tx(&mud_pulse);
     xTimerStart(xTimerCreate("timer_send_dbg_data_cb", 100, 1, 0, timer_send_dbg_data_cb), 1000);

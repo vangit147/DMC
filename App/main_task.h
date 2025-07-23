@@ -31,10 +31,7 @@ void set_downhole(int val);
 int8_t get_downhole(void);
 float get_36V_voltage(void);
 void start_and_get_adc_result(void);
-#ifdef ADXL357_VIBRATION_TEST
-uint32_t get_vibrating_flag(void);
 void checking_vibrating_gpio(void);
-#endif
 uint32_t get_vibrating_flag(void);
 void load_algorithm_setting_from_flash(void);
 #ifdef __cplusplus

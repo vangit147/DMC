@@ -53,14 +53,27 @@
 #define ADXL357_FREQUENCY_1MS 0x02    //1ms
 #define ADXL357_FREQUENCY_05MS 0x01   //0.5ms
 #define ADXL357_FREQUENCY_025MS 0x00   //0.25ms
-#define NORM 49526.6797
 
 static int32_t  raw_acc_x, raw_acc_y, raw_acc_z;
 static float    adxl357_acc_x, adxl357_acc_y, adxl357_acc_z;
+float    g_norm;
+static float   acc_norm;
 
 TaskHandle_t     adx357_task_handle;
 adxl357_vibration_data_t vibration_data;
 /******************************** Functions **********************************/
+void adxl357_get_adc_norm(float* norm)
+{
+    *norm = acc_norm;
+}
+
+void adxl357_get_adc_raw_data(float* x, float* y, float* z)
+{
+    *x = raw_acc_x;
+    *y = raw_acc_y;
+    *z = raw_acc_z;
+}
+
 void adxl357_get_adc_data(float* x, float* y, float* z)
 {
     *x = adxl357_acc_x;
@@ -74,15 +87,21 @@ void Reset_Vibration_Stats(void)
     vibration_data.min_vibration = 99999;
     vibration_data.max_vibration = -99999;
     vibration_data.avg_vibration = 0;
+    vibration_data.vibration = 0;
 }
 
 void Get_Vibration_Data(void)
 {
 		SensorData accel;
+		SensorData raw_acc;
 		float v_data;
     adxl357_get_adc_data(&accel.x, &accel.y, &accel.z);
+    adxl357_get_adc_raw_data(&raw_acc.x, &raw_acc.y, &raw_acc.z);
 
+    acc_norm = sqrtf(raw_acc.x * raw_acc.x + raw_acc.y * raw_acc.y + raw_acc.z * raw_acc.z);
     v_data = sqrtf(accel.x * accel.x + accel.y * accel.y + accel.z * accel.z);
+
+    vibration_data.vibration = v_data;
 
     if (v_data < vibration_data.min_vibration)
 		    vibration_data.min_vibration = v_data;
@@ -156,6 +175,7 @@ static int32_t adxl357_init(void)
     vTaskDelay(10);
 
     adxl357_start(1);
+
     return 0;
 }
 
@@ -190,9 +210,9 @@ static void on_adxl357_data_ready_event(void)
 //    adxl357_acc_z = raw_acc_z * 10.0f / (1 << 19);
 
 //    norm = sqrtf((float)raw_acc_x * (float)raw_acc_x + (float)raw_acc_y * (float)raw_acc_y + (float)raw_acc_z * (float)raw_acc_z);
-    adxl357_acc_x = (float)raw_acc_x / NORM;
-    adxl357_acc_y = (float)raw_acc_y / NORM;
-    adxl357_acc_z = (float)raw_acc_z / NORM;
+    adxl357_acc_x = (float)raw_acc_x / g_norm;
+    adxl357_acc_y = (float)raw_acc_y / g_norm;
+    adxl357_acc_z = (float)raw_acc_z / g_norm;
 }
 
 void adxl357_task(void* p)

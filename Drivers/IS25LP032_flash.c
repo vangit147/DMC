@@ -139,6 +139,7 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     uint32_t vibration_sensitivity; // 振动灵敏度
     uint32_t idle_hook_enable;      // 低功耗状态
     float calibration_data;         // 添加校准数据变量
+    float norm;                    // ADXL357三轴加速度模长NORM
 } CFG_T;
 
 // 默认参数
@@ -183,7 +184,8 @@ static const CFG_T default_cfg = {
         .static_collection_time = 40, // 40秒静态数据采集时间（前20秒不计算均值）
         .auto_send_period = 10800     // 10800秒定时发送时间
     },
-    .calibration_data = 0.0f
+    .calibration_data = 0.0f,
+    .norm = NORM
 };
 
 typedef __packed union
@@ -1930,4 +1932,31 @@ uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
     dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
     is25pl032_flash_save_dev_cfg();
     return 0;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取ADXL357三轴加速度模长NORM
+ * @Parameters : 无
+ * @RetValue   : NORM值（float）
+ * @Note       : 获取当前存储在Flash中的NORM参数
+ *******************************************************************************
+ */
+float is25pl032_flash_get_norm(void)
+{
+    return dev_cfg.u_cfg.cfg.norm;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置ADXL357三轴加速度模长NORM
+ * @Parameters : norm - 要设置的NORM值
+ * @RetValue   : 0-成功，非0-失败
+ * @Note       : 设置NORM参数并保存到Flash
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_norm(float norm)
+{
+    dev_cfg.u_cfg.cfg.norm = norm;
+    return is25pl032_flash_save_dev_cfg();
 }

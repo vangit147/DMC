@@ -654,6 +654,26 @@ extern "C"
      */
     uint32_t is25pl032_flash_set_calibration_data(float calibration_data);
 
+    /**
+     *******************************************************************************
+     * @Description: 获取ADXL357三轴加速度模长NORM
+     * @Parameters : 无
+     * @RetValue   : NORM值（float）
+     * @Note       : 获取当前存储在Flash中的NORM参数
+     *******************************************************************************
+     */
+    float is25pl032_flash_get_norm(void);
+
+    /**
+     *******************************************************************************
+     * @Description: 设置ADXL357三轴加速度模长NORM
+     * @Parameters : norm - 要设置的NORM值
+     * @RetValue   : 0-成功，非0-失败
+     * @Note       : 设置NORM参数并保存到Flash
+     *******************************************************************************
+     */
+    uint32_t is25pl032_flash_set_norm(float norm);
+
 #ifdef __cplusplus
 }
 #endif

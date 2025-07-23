@@ -27,6 +27,7 @@ extern sensor_data_t sensor_data;
 extern ads1278_global_raw_data_t s_ads1278_global_raw_data;
 extern iam_global_raw_data_t s_iam_global_raw_data;
 extern inclination_hs_t inc_hs_data;
+extern adxl357_vibration_data_t vibration_data;
 
 #define RECEIVE_MSG_LEN 120
 static uint8_t receiveMsg[RECEIVE_MSG_LEN];
@@ -1226,13 +1227,82 @@ void send_msg(void)
         goto ok;
     }
 
+    // VD=? 获取ADXL357三轴加速度模长、振动数据（以g为单位）、flash中存储的模长
+    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'D' && receiveMsg[2] == '=' && receiveMsg[3] == '?') {
+        float acc_norm;
+        adxl357_get_adc_norm(&acc_norm);
+        float acc_norm_in_flash = is25pl032_flash_get_norm();
+        uint32_t vibration_flag=0;
+        // 获取震动状态
+        checking_vibrating_gpio();
+        if (get_vibrating_flag())
+            vibration_flag |= LOG_FLAG_VIBRATING;
+        if (get_adxl357_vibrating_flag())
+            vibration_flag |= LOG_FLAG_VIBRATING_FOR_ADXL357;
+        uint8_t *p_uint8 = (uint8_t *)output_buffer;
+        uint8_t flag = 0x1E;
+        *p_uint8++ = 0x55;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x54;
+        *p_uint8++ = 0x01;
+        *p_uint8++ = 0x01;
+        sendLength = 20;
+        output_buffer[3] = sendLength >> 16 & 0xff;
+        output_buffer[4] = sendLength & 0xff;
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm_in_flash, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.vibration, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag, 4);
+        *p_uint8++ = 0x54;
+        *p_uint8++ = flag;
+        *p_uint8++ = 0x55;
+        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
+        isSend = 0;
+    }
+    // VD=数值 写入NORM
+    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'D' && receiveMsg[2] == '=' && receiveMsg[3] != '?') {
+        char *data = (char *)receiveMsg + 3;
+        uint8_t temp[24];
+        uint8_t tempIndex = 0;
+        uint8_t dataIndex = 0;
+
+        // 解析模长数据
+        tempIndex = 0;
+        while (data[dataIndex] != '\0')
+        {
+            temp[tempIndex++] = data[dataIndex++];
+        }
+        temp[tempIndex] = '\0';
+
+        // 写入模长数据
+        float norm = atof((const char *)temp);
+        if (norm < 0.0f)
+            goto error;
+        is25pl032_flash_set_norm(norm);
+        isSend = 0;
+        goto ok;
+    }
+
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'T' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
     {
-        // 设置振动阈值
-        float val = atoi((const char *)&receiveMsg[3]);
-        if (val > 10.0f)
+        char *data = (char *)receiveMsg + 3;
+        uint8_t temp[24];
+        uint8_t tempIndex = 0;
+        uint8_t dataIndex = 0;
+
+        // 解析振动阈值数据
+        tempIndex = 0;
+        while (data[dataIndex] != '\0')
+        {
+            temp[tempIndex++] = data[dataIndex++];
+        }
+        temp[tempIndex] = '\0';
+
+        // 写入振动阈值数据
+        float vibration_threshold = atof((const char *)temp);
+        if (vibration_threshold > 50.0f)
             goto error;
-        is25pl032_flash_set_vibration_threshold(val);
+        is25pl032_flash_set_vibration_threshold(vibration_threshold);
         isSend = 0;
         goto ok;
     }
@@ -1242,7 +1312,7 @@ void send_msg(void)
         // 获取振动阈值
         float vibration_threshold = 0.0f;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1B; // 更新命令标识
+        uint8_t flag = 0x1F; // 更新命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
@@ -1250,37 +1320,6 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         vibration_threshold = is25pl032_flash_get_vibration_threshold();
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_threshold, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'S' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
-    {
-        // 设置振动灵敏度
-        uint32_t val = atoi((const char *)&receiveMsg[3]);
-        if (val > 50)
-            goto error;
-        is25pl032_flash_set_vibration_sensitivity(val);
-        isSend = 0;
-        goto ok;
-    }
-
-    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'S' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
-    {
-        // 获取振动灵敏度
-        uint32_t vibration_sensitivity = 0;
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1C; // 更新命令标识
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        vibration_sensitivity = is25pl032_flash_get_vibration_sensitivity();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_sensitivity, 4);
         *p_uint8++ = 0x54;
         *p_uint8++ = flag;
         *p_uint8++ = 0x55;
