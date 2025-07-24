@@ -136,7 +136,6 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     mud_pulse_config_t mud_pulse_cfg; // 泥浆脉冲配置
     /* 振动参数设置 */
     float vibration_threshold;      // 振动阈值
-    uint32_t vibration_sensitivity; // 振动灵敏度
     uint32_t idle_hook_enable;      // 低功耗状态
     float calibration_data;         // 添加校准数据变量
     float norm;                    // ADXL357三轴加速度模长NORM
@@ -172,7 +171,6 @@ static const CFG_T default_cfg = {
     .t_scale = -0.000164327854f,
     .t_intercept = 321.9705002,
     .vibration_threshold = THRESHOLD,
-    .vibration_sensitivity = SENSITIVITY,
     .idle_hook_enable = 0,
     .mud_pulse_cfg = {
         .timer_hz = 100,              // 100Hz定时器频率
@@ -1850,33 +1848,6 @@ uint32_t is25pl032_flash_set_vibration_threshold(float vibration_threshold)
 float is25pl032_flash_get_vibration_threshold(void)
 {
     return dev_cfg.u_cfg.cfg.vibration_threshold;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置ADXL357振动灵敏度
- * @Parameters : vibration_sensitivity - 灵敏值
- * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置ADXL357振动灵敏度
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_sensitivity(uint32_t vibration_sensitivity)
-{
-    dev_cfg.u_cfg.cfg.vibration_sensitivity = vibration_sensitivity;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取ADXL357振动灵敏度
- * @Parameters : 无
- * @RetValue   : 0-成功，-1-失败
- * @Note       : 获取ADXL357振动灵敏度
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_vibration_sensitivity(void)
-{
-    return dev_cfg.u_cfg.cfg.vibration_sensitivity;
 }
 
 /**

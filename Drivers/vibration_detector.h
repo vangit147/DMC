@@ -23,8 +23,6 @@ extern "C" {
 #define VIBRATION_DETECTION_FREQUENCY 100
 //振动阈值 1.0g
 #define THRESHOLD 1.0f
-//灵敏度
-#define SENSITIVITY 5
 /*******************************************************/
 
 /* 函数声明 */

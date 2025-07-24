@@ -9,7 +9,6 @@ static uint8_t                   s_u8_adxl357_vibrating_flag;
 typedef struct {
     float threshold;          // 振动阈值
     uint8_t enabled;          // 使能标志
-    uint8_t sensitivity;      // 灵敏度设置
     uint8_t is_triggered;     // 触发标志
     uint32_t trigger_count;   // 触发计数
     uint32_t count;           // 计数
@@ -21,7 +20,6 @@ SensorData DATA[VIBRATION_PERIOD*1000/VIBRATION_DETECTION_FREQUENCY];
 static VibrationDetector_t vibration_config = {
     .threshold = THRESHOLD,
     .enabled = 1,
-    .sensitivity = SENSITIVITY,
     .is_triggered = 0,
     .trigger_count = 0,
     .count = 0
@@ -34,12 +32,7 @@ uint32_t get_adxl357_vibrating_flag(void)
 
 static void VibrationDetector_Config_Init()
 {
-    float threshold;
-    uint32_t sensitivity;
-    threshold = is25pl032_flash_get_vibration_threshold();
-    sensitivity = is25pl032_flash_get_vibration_sensitivity();
-    vibration_config.threshold = threshold;
-    vibration_config.sensitivity = (uint8_t)sensitivity;
+    vibration_config.threshold = is25pl032_flash_get_vibration_threshold();
 }
 
 static void VibrationDetector_Process()
@@ -48,14 +41,12 @@ static void VibrationDetector_Process()
         return;
     }
 
-    float threshold;
 //    uint8_t temp_data[200];
 	  float sum=0.0f;
 
     DATA[vibration_config.count-1].x = data.x;
     DATA[vibration_config.count-1].y = data.y;
     DATA[vibration_config.count-1].z = data.z;
-    threshold = vibration_config.threshold * ((float)vibration_config.sensitivity / 5.0f);
 
 	  if(vibration_config.count >= (VIBRATION_PERIOD*1000/VIBRATION_DETECTION_FREQUENCY)) {
         for(uint32_t i=1;i<=vibration_config.count;i++)
@@ -67,7 +58,7 @@ static void VibrationDetector_Process()
         LPUART1_send(temp_data, n);
         //printf("sum=%.2f g\r\n", sum);
 */
-        if(sum > threshold)
+        if(sum > vibration_config.threshold)
 		        vibration_config.is_triggered = 1;
         else
 		        vibration_config.is_triggered = 0;
@@ -114,8 +105,8 @@ static void VibrationMonitor_Task(void *pvParameters)
 			          s_u8_adxl357_vibrating_flag = 1;/*
 							  //printf("vibration_config.is_triggered=%d", vibration_config.is_triggered);
 							  memset(temp_data, 0xFF, sizeof(temp_data));
-                int n = sprintf((char*)temp_data,"status.is_triggered=%d, vibration_config.threshold=%.2fg vibration_config.sensitivity=%d\r\n", 
-								vibration_config.is_triggered, vibration_config.threshold, vibration_config.sensitivity);				
+                int n = sprintf((char*)temp_data,"status.is_triggered=%d, vibration_config.threshold=%.2fg\r\n",
+								vibration_config.is_triggered, vibration_config.threshold);
 							if(vibration_config.count%20==0)
 		            LPUART1_send(temp_data, n);*/
 						}
