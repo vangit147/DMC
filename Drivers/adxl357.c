@@ -92,9 +92,9 @@ void Reset_Vibration_Stats(void)
 
 void Get_Vibration_Data(void)
 {
-		SensorData accel;
-		SensorData raw_acc;
-		float v_data;
+    vibration_sensor_data_t accel;
+    vibration_sensor_data_t raw_acc;
+    float v_data;
     adxl357_get_adc_data(&accel.x, &accel.y, &accel.z);
     adxl357_get_adc_raw_data(&raw_acc.x, &raw_acc.y, &raw_acc.z);
 

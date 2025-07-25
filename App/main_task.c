@@ -53,17 +53,11 @@ float trans_ie;
 float rpm;
 
 static float s_f32_36V;             // ADC0_SE2  PTA6  36V监测
-static uint8_t s_u8_vibrating_flag; // PTA12 1--震动 0--非震动
 
 /******************************** Functions **********************************/
 float get_36V_voltage(void)
 {
     return s_f32_36V;
-}
-
-uint32_t get_vibrating_flag(void)
-{
-    return s_u8_vibrating_flag;
 }
 
 void start_and_get_adc_result(void)
@@ -76,19 +70,6 @@ void start_and_get_adc_result(void)
 
     // 电压缩放系数:21
     s_f32_36V = (float)u16_ADC_raw_result * 3.300f * 21.0f / 4096.0f;
-}
-
-void checking_vibrating_gpio(void)
-{
-    static uint8_t s_u8_gpio_state;
-
-    s_u8_gpio_state <<= 1;
-    if (PINS_DRV_ReadPins(PTA) & (0x1 << 12))
-        s_u8_gpio_state |= 1;
-    if (s_u8_gpio_state == 0xff)
-        s_u8_vibrating_flag = 1;
-    else if (s_u8_gpio_state == 0)
-        s_u8_vibrating_flag = 0;
 }
 
 void set_downhole(int val)
@@ -435,11 +416,9 @@ static void on_100ms_timer_event(void)
         if (!mud_pulse.state.double_stage)
         {
             uint8_t currentMotionState = 0;
-
-            // 在震动时才发送泥浆脉冲
+            // 使用统一的振动检测函数，根据vibration_source参数自动选择检测源
             if (get_vibrating_flag())
                 currentMotionState = 1;
-
             mud_pulse_update_data(&mud_pulse, currentMotionState);
         }
 
@@ -824,7 +803,7 @@ void load_algorithm_setting_from_flash(void)
     if (flash_norm > 0.0f)
         g_norm = flash_norm;
     else
-        g_norm = NORM;
+        g_norm = DEFAULT_NORM_VALUE;
 }
 
 /**
