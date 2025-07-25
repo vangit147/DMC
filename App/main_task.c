@@ -418,9 +418,6 @@ static void on_100ms_timer_event(void)
 
     // 获取震动状态
     checking_vibrating_gpio();
-#ifndef ADXL357_VIBRATION_TEST
-    checking_vibrating_adxl357();
-#endif
 
     // 每秒更新一次数据
     rtc_timeout++;
@@ -511,7 +508,7 @@ static void on_100ms_timer_event(void)
             log.vibration_data_min = vibration_data.min_vibration;
             log.vibration_data_max = vibration_data.max_vibration;
             log.vibration_data_avg = vibration_data.avg_vibration;
-            printf("vibration_data.min_vibration=%f,vibration_data.max_vibration=%f,vibration_data.avg_vibration=%f\r\n", vibration_data.min_vibration, vibration_data.max_vibration, vibration_data.avg_vibration);
+            printf("vibration_data.min_vibration=%f,vibration_data.max_vibration=%f,vibration_data.avg_vibration=%f log.flag=%d\r\n", vibration_data.min_vibration, vibration_data.max_vibration, vibration_data.avg_vibration, log.flag);
             Reset_Vibration_Stats();
 
             log.s_f32_36V = get_36V_voltage();
@@ -961,6 +958,7 @@ void main_task(void *p)
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
     xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
+    xTaskCreate(VibrationMonitor_Task, "VibrationMonitor_Task", 256, NULL, TASK_PRIORITY_ADXL357, &vibration_monitor_task_handle);
 		
     // 处理上位机事件
     waiting_for_uart2_timeout_tmr = xTimerCreate("uart2_timeout_tmr", 20 * 1000, 0, 0, timer_waiting_for_uart2_timeout_cb);

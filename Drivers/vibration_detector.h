@@ -14,7 +14,6 @@ extern "C" {
 
 /*******************************************************/
 // 振动配置参数
-//#define ADXL357_VIBRATION_TEST 1
 //ADXL357 采样频率，单位ms
 #define ADXL357_COLLECTION_FREQUENCY 100
 //振动检测周期，单位s
@@ -23,13 +22,14 @@ extern "C" {
 #define VIBRATION_DETECTION_FREQUENCY 100
 //振动阈值 1.0g
 #define THRESHOLD 1.0f
+#define WINDOW_SIZE VIBRATION_PERIOD*1000/VIBRATION_DETECTION_FREQUENCY/2
 /*******************************************************/
 
 /* 函数声明 */
 uint32_t get_adxl357_vibrating_flag(void);
-#ifndef ADXL357_VIBRATION_TEST
-void checking_vibrating_adxl357(void);
-#endif
+
+extern void VibrationMonitor_Task(void *pvParameters);
+extern TaskHandle_t    vibration_monitor_task_handle;
 
 #ifdef __cplusplus
 }
