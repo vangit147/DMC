@@ -15,7 +15,7 @@
 #include "IS25LP032_flash.h"
 #include "mud_pulse.h"
 
-#define TGDMC "TG250701_0.1"
+#define TGDMC "TG250804_0.2"
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
 #define FLASH_WREN 0X06
@@ -40,7 +40,7 @@ FLASH 数据区定义
 +--------------------------+
 
 */
-#define FLASH_INITED_FLAG 0XABEEBEE8
+#define FLASH_INITED_FLAG 0XABEEBEE9
 #define FLASH_TOTAL_SIZE (4 * 1024 * 1024)
 // CFG
 #define DEVICE_CFG_FLAG 0XBEE1BEEE
