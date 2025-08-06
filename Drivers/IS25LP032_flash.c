@@ -191,13 +191,10 @@ static const CFG_T default_cfg = {
     /* 泥浆脉冲设置 */
     .mud_pulse_cfg = {
         .timer_hz = 100,              // 100Hz定时器频率
-        .no_vibration_time = 60,      // 60秒无振动时间
-        .group_interval = 60,         // 60秒组间隔
-        .send_delay = 60,             // 60秒发送延时
-        .max_retry_count = 1,         // 1次重试
-        .number_of_groups = 3,        // 3组发送
-        .static_collection_time = 40, // 40秒静态数据采集时间（前20秒不计算均值）
-        .auto_send_period = 10800,    // 10800秒定时发送时间
+        .retry_interval = MUD_PULSE_DEFAULT_RETRY_INTERVAL,         // 默认静态脉冲数据重传时间间隔
+        .max_retry_count = MUD_PULSE_DEFAULT_MAX_RETRY_COUNT,       // 默认静态脉冲数据重传次数
+        .static_collection_time = MUD_PULSE_DEFAULT_STATIC_COLLECTION_TIME, // 默认静态脉冲数据采集时间
+        .auto_send_period = MUD_PULSE_DEFAULT_AUTO_SEND_PERIOD,     // 默认动态脉冲数据周期性上传时间
     },
     /* 振动参数设置 */
     .vibration_cfg = {
@@ -1707,10 +1704,10 @@ uint32_t is25pl032_flash_set_retry_count(uint32_t count)
 
 /**
  *******************************************************************************
- * @Description: 获取泥浆脉冲数据重传次数
+ * @Description: 获取静态脉冲数据重传次数
  * @Parameters : 无
- * @RetValue   : 泥浆脉冲数据重传次数
- * @Note       : 获取泥浆脉冲数据有效范围的重传次数
+ * @RetValue   : 静态脉冲数据重传次数
+ * @Note       : 获取静态脉冲数据有效范围的重传次数
  *******************************************************************************
  */
 uint32_t is25pl032_flash_get_retry_count(void)
@@ -1720,64 +1717,37 @@ uint32_t is25pl032_flash_get_retry_count(void)
 
 /**
  *******************************************************************************
- * @Description: 设置每组泥浆脉冲数据的间隔
- * @Parameters : Pulse_group_interval - 时间间隔
+ * @Description: 设置静态脉冲数据重传时间间隔
+ * @Parameters : retry_interval - 静态脉冲数据重传时间间隔（秒）
  * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置每组泥浆脉冲数据的有效间隔
+ * @Note       : 设置静态脉冲数据重传时间间隔
  *******************************************************************************
  */
-uint32_t is25pl032_flash_set_Pulse_group_interval(uint32_t Pulse_group_interval)
+uint32_t is25pl032_flash_set_retry_interval(uint32_t retry_interval)
 {
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.group_interval = Pulse_group_interval;
+    dev_cfg.u_cfg.cfg.mud_pulse_cfg.retry_interval = retry_interval;
     return is25pl032_flash_save_dev_cfg();
 }
 
 /**
  *******************************************************************************
- * @Description: 获取每组泥浆脉冲数据的间隔
+ * @Description: 获取静态脉冲数据重传时间间隔
  * @Parameters : 无
- * @RetValue   : 每组泥浆脉冲数据的间隔
- * @Note       : 获取每组泥浆脉冲数据的间隔
+ * @RetValue   : 静态脉冲数据重传时间间隔（秒）
+ * @Note       : 获取静态脉冲数据重传时间间隔
  *******************************************************************************
  */
-uint32_t is25pl032_flash_get_Pulse_group_interval(void)
+uint32_t is25pl032_flash_get_retry_interval(void)
 {
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.group_interval;
+    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.retry_interval;
 }
 
 /**
  *******************************************************************************
- * @Description: 设置泥浆脉冲数据发送延时时间
- * @Parameters : Pulse_send_delay - 延时时间
+ * @Description: 设置动态脉冲数据周期性上传时间
+ * @Parameters : Pulse_auto_send - 动态脉冲数据周期性上传时间
  * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置泥浆脉冲数据发送延时时间
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_Pulse_send_delay(uint32_t Pulse_send_delay)
-{
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.send_delay = Pulse_send_delay;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取泥浆脉冲数据发送延时时间
- * @Parameters : 无
- * @RetValue   : 泥浆脉冲数据发送延时时间
- * @Note       : 获取泥浆脉冲数据发送延时时间
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_Pulse_send_delay(void)
-{
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.send_delay;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置泥浆脉冲数据定时发送时间
- * @Parameters : Pulse_auto_send - 定时发送时间
- * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置泥浆脉冲数据定时发送时间
+ * @Note       : 设置动态脉冲数据周期性上传时间
  *******************************************************************************
  */
 uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
@@ -1788,10 +1758,10 @@ uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
 
 /**
  *******************************************************************************
- * @Description: 获取泥浆脉冲数据定时发送时间
+ * @Description: 获取动态脉冲数据周期性上传时间
  * @Parameters : 无
- * @RetValue   : 泥浆脉冲数据定时发送时间
- * @Note       : 获取泥浆脉冲数据定时发送时间
+ * @RetValue   : 动态脉冲数据周期性上传时间
+ * @Note       : 获取动态脉冲数据周期性上传时间
  *******************************************************************************
  */
 uint32_t is25pl032_flash_get_Pulse_auto_send(void)
@@ -1801,10 +1771,10 @@ uint32_t is25pl032_flash_get_Pulse_auto_send(void)
 
 /**
  *******************************************************************************
- * @Description: 设置静态数据收集的时间
- * @Parameters : Static_data_collection - 静态数据收集的时间
+ * @Description: 设置静态脉冲数据采集时间
+ * @Parameters : Static_data_collection - 静态脉冲数据采集时间
  * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置静态数据收集的时间
+ * @Note       : 设置静态脉冲数据采集时间
  *******************************************************************************
  */
 uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collection)
@@ -1815,42 +1785,15 @@ uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collect
 
 /**
  *******************************************************************************
- * @Description: 获取静态数据收集的时间
+ * @Description: 获取静态脉冲数据采集时间
  * @Parameters : 无
- * @RetValue   : 静态数据收集的时间
- * @Note       : 获取静态数据收集的时间
+ * @RetValue   : 静态脉冲数据采集时间
+ * @Note       : 获取静态脉冲数据采集时间
  *******************************************************************************
  */
 uint32_t is25pl032_flash_get_Static_data_collection(void)
 {
     return dev_cfg.u_cfg.cfg.mud_pulse_cfg.static_collection_time;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置泥浆脉冲发送的组数
- * @Parameters : Number_of_pluse_group - 泥浆脉冲发送的组数
- * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置泥浆脉冲发送的组数
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_Number_of_pluse_group(uint32_t Number_of_pluse_group)
-{
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.number_of_groups = Number_of_pluse_group;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取泥浆脉冲发送的组数
- * @Parameters : 无
- * @RetValue   : 泥浆脉冲发送的组数
- * @Note       : 获取泥浆脉冲发送的组数
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_Number_of_pluse_group(void)
-{
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.number_of_groups;
 }
 
 /**

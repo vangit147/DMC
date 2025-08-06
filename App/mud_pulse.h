@@ -23,17 +23,23 @@
 #define MUD_PULSE_PORT PTA
 #define MUD_PULSE_PIN 13
 
+// 泥浆脉冲配置宏定义
+#define MUD_PULSE_VIBRATION_COOLDOWN_SECONDS 5  // 振动冷却期（秒）
+
+// 泥浆脉冲配置默认值宏定义
+#define MUD_PULSE_DEFAULT_RETRY_INTERVAL        30   // 默认静态脉冲数据重传时间间隔（秒）
+#define MUD_PULSE_DEFAULT_MAX_RETRY_COUNT       1    // 默认静态脉冲数据重传次数
+#define MUD_PULSE_DEFAULT_STATIC_COLLECTION_TIME 60  // 默认静态脉冲数据采集时间（秒）
+#define MUD_PULSE_DEFAULT_AUTO_SEND_PERIOD      1800 // 默认动态脉冲数据周期性上传时间（秒）
+
 // 泥浆脉冲配置结构体
 typedef __packed struct
 {
     uint32_t timer_hz;               // 定时器频率
-    uint32_t no_vibration_time;      // 无振动时间
-    uint32_t group_interval;         // 组间隔
-    uint32_t send_delay;             // 发送延迟
-    uint32_t max_retry_count;        // 最大重试次数
-    uint32_t number_of_groups;       // 脉冲组数量
-    uint32_t static_collection_time; // 静态数据采集时间
-    uint32_t auto_send_period;       // 定时发送时间
+    uint32_t max_retry_count;        // 静态脉冲数据重传次数
+    uint32_t retry_interval;         // 静态脉冲数据重传时间间隔（秒）
+    uint32_t static_collection_time; // 静态脉冲数据采集时间
+    uint32_t auto_send_period;       // 动态脉冲数据周期性上传时间
 } mud_pulse_config_t;
 
 // 泥浆脉冲状态结构体
@@ -41,25 +47,27 @@ typedef __packed struct
 {
     uint8_t double_stage;           // 双脉冲阶段
     uint8_t tx_request;             // 发送请求
-    uint32_t current_retry_count;   // 当前重试计数
-    uint32_t no_vibration_period;   // 无振动周期
-    uint32_t period_counter;        // 周期计数
-    uint8_t last_motion_state;      // 上次运动状态
-    uint8_t remaining_groups;       // 剩余要发送的组数
+    uint32_t current_retry_count;   // 当前静态脉冲重传计数
+    uint32_t retry_interval_counter; // 静态脉冲重传间隔计时器
+    uint32_t period_counter;        // 动态脉冲周期性发送计数
+    uint8_t vibration_triggered;    // 振动触发标志
+    uint32_t vibration_cooldown;    // 振动冷却计时器
     uint8_t tx_started;             // 发送启动标志
-    uint8_t vibration_persist_flag; // 持续振动标志，振动中静止状态不会超过60s
+    uint8_t timer_triggered;        // 动态脉冲定时发送触发标志
 } mud_pulse_state_t;
 
 // 泥浆脉冲数据结构体
 typedef struct
 {
-    int32_t tx_buffer[64];  // 发送缓冲区
-    uint32_t buffer_len;    // 缓冲区长度
-    uint32_t curr_index;    // 当前索引
-    uint32_t curr_duration; // 当前持续时间
+    int32_t tx_buffer[64];           // 统一发送缓冲区
+    int32_t static_data_buffer[64];  // 静态脉冲数据准备缓冲区
+    int32_t dynamic_data_buffer[64]; // 动态脉冲数据准备缓冲区
+    uint32_t buffer_len;             // 缓冲区长度
+    uint32_t curr_index;             // 当前索引
+    uint32_t curr_duration;          // 当前持续时间
 } mud_pulse_data_t;
 
-// 泥浆脉冲数据采集结构体
+// 静态脉冲数据采集结构体
 typedef struct
 {
     float min_ie;      // 最小井斜
@@ -70,7 +78,7 @@ typedef struct
     float avg_temp;    // 平均温度
     float avg_hs;      // 平均高边
     float avg_voltage; // 平均电压
-    uint8_t count;     // 数据采集计数
+    uint8_t count;     // 静态数据采集计数
 } mud_pulse_data_collect_t;
 
 // 泥浆脉冲控制结构体
@@ -94,13 +102,13 @@ void mud_pulse_update_state(mud_pulse_t *pulse);
 // 定时器中断处理
 void mud_pulse_timer_isr(mud_pulse_t *pulse);
 
-// 更新泥浆脉冲数据
+// 更新泥浆脉冲数据（包括静态和动态脉冲）
 void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState);
 
-// 初始化泥浆脉冲数据采集
+// 初始化静态脉冲数据采集
 void mud_pulse_init_collect(mud_pulse_t *pulse);
 
-// 设置泥浆脉冲数据
+// 设置泥浆脉冲数据格式
 void mud_pulse_set_data(mud_pulse_t *pulse);
 
 // 全局变量声明

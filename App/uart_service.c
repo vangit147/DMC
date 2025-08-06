@@ -991,9 +991,9 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'R' && receiveMsg[1] == 'E' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
     {
-        // 设置泥浆脉冲数据重传次数
+        // 设置静态脉冲数据重传次数
         uint32_t val = atoi((const char *)&receiveMsg[3]);
-        if (val > 10)
+        if (val > 50)
             goto error;
         is25pl032_flash_set_retry_count(val);
         isSend = 0;
@@ -1002,7 +1002,7 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'R' && receiveMsg[1] == 'E' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
     {
-        // 获取泥浆脉冲数据重传次数
+        // 获取静态脉冲数据重传次数
         uint32_t retry_count = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
         uint8_t flag = 0x0C;
@@ -1020,21 +1020,21 @@ void send_msg(void)
         isSend = 0;
     }
 
-    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'G' && receiveMsg[2] == 'I' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
+    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'R' && receiveMsg[2] == 'I' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
-        // 设置每组泥浆脉冲数据的间隔
+        // 设置静态脉冲数据重传时间间隔
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val < 60 || val > 600)
+        if (val < 10 || val > 300)
             goto error;
-        is25pl032_flash_set_Pulse_group_interval(val);
+        is25pl032_flash_set_retry_interval(val);
         isSend = 0;
         goto ok;
     }
 
-    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'G' && receiveMsg[2] == 'I' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
+    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'R' && receiveMsg[2] == 'I' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
     {
-        // 获取每组泥浆脉冲数据的间隔
-        uint32_t Pulse_group_interval = 0;
+        // 获取静态脉冲数据重传时间间隔
+        uint32_t retry_interval = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
         uint8_t flag = 0x0D;
         *p_uint8++ = 0x55;
@@ -1042,39 +1042,8 @@ void send_msg(void)
         *p_uint8++ = 0x54;
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
-        Pulse_group_interval = is25pl032_flash_get_Pulse_group_interval();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&Pulse_group_interval, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'S' && receiveMsg[2] == 'D' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
-    {
-        // 设置泥浆脉冲数据发送延时时间
-        uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val < 60 || val > 600)
-            goto error;
-        is25pl032_flash_set_Pulse_send_delay(val);
-        isSend = 0;
-        goto ok;
-    }
-
-    if (receiveMsg[0] == 'P' && receiveMsg[1] == 'S' && receiveMsg[2] == 'D' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
-    {
-        // 获取泥浆脉冲数据发送延时时间
-        uint32_t Pulse_send_delay = 0;
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x0E;
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        Pulse_send_delay = is25pl032_flash_get_Pulse_send_delay();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&Pulse_send_delay, 4);
+        retry_interval = is25pl032_flash_get_retry_interval();
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&retry_interval, 4);
         *p_uint8++ = 0x54;
         *p_uint8++ = flag;
         *p_uint8++ = 0x55;
@@ -1084,9 +1053,9 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'P' && receiveMsg[1] == 'A' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
-        // 设置泥浆脉冲数据定时发送时间
+        // 设置动态脉冲数据周期性上传时间
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val > 36000 && val < 10800)
+        if (val < 300 || val > 3600)
             goto error;
         is25pl032_flash_set_Pulse_auto_send(val);
         isSend = 0;
@@ -1095,7 +1064,7 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'P' && receiveMsg[1] == 'A' && receiveMsg[2] == 'S' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
     {
-        // 获取泥浆脉冲数据定时发送时间
+        // 获取动态脉冲数据周期性上传时间
         uint32_t Pulse_auto_send = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
         uint8_t flag = 0x0F;
@@ -1115,9 +1084,9 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'S' && receiveMsg[1] == 'D' && receiveMsg[2] == 'C' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
     {
-        // 设置静态数据收集的时间
+        // 设置静态脉冲数据采集时间
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val <= 20 || val > 60)
+        if (val < 21 || val > 120)
             goto error;
         is25pl032_flash_set_Static_data_collection(val);
         isSend = 0;
@@ -1126,7 +1095,7 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'S' && receiveMsg[1] == 'D' && receiveMsg[2] == 'C' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
     {
-        // 获取静态数据收集的时间
+        // 获取静态脉冲数据采集时间
         uint32_t Static_data_collection = 0;
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
         uint8_t flag = 0x17;
@@ -1137,37 +1106,6 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         Static_data_collection = is25pl032_flash_get_Static_data_collection();
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&Static_data_collection, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    if (receiveMsg[0] == 'N' && receiveMsg[1] == 'P' && receiveMsg[2] == 'G' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
-    {
-        // 设置泥浆脉冲发送的组数
-        uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val > 5)
-            goto error;
-        is25pl032_flash_set_Number_of_pluse_group(val);
-        isSend = 0;
-        goto ok;
-    }
-
-    if (receiveMsg[0] == 'N' && receiveMsg[1] == 'P' && receiveMsg[2] == 'G' && receiveMsg[3] == '=' && receiveMsg[4] == '?')
-    {
-        // 获取泥浆脉冲发送的组数
-        uint32_t Number_of_pluse_group = 0;
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x18;
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        Number_of_pluse_group = is25pl032_flash_get_Number_of_pluse_group();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&Number_of_pluse_group, 4);
         *p_uint8++ = 0x54;
         *p_uint8++ = flag;
         *p_uint8++ = 0x55;
