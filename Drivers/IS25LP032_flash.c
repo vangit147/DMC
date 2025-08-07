@@ -200,13 +200,9 @@ static const CFG_T default_cfg = {
     .vibration_cfg = {
         .threshold = DEFAULT_VIBRATION_THRESHOLD,         // 振动阈值 - 上位机命令: VT=?
         .vibration_source = VIBRATION_DEFAULT_SOURCE,             // 振动检测源选择 - 上位机命令: VS=?
-        .peak_threshold = VIBRATION_DEFAULT_PEAK_THRESHOLD,       // 峰值检测阈值 - 上位机命令: DP=?
-        .variance_threshold = VIBRATION_DEFAULT_VARIANCE_THRESHOLD, // 方差检测阈值 - 上位机命令: DV=?
         .delta_threshold = DEFAULT_VIBRATION_DELTA_THRESHOLD,      // 差值检测阈值 - 上位机命令: DT=?
         .rms_threshold = VIBRATION_DEFAULT_RMS_THRESHOLD,         // RMS检测阈值 - 上位机命令: DR=?
-        .avg_threshold = VIBRATION_DEFAULT_AVG_THRESHOLD,         // 平均值检测阈值 - 上位机命令: DA=?
         .norm = DEFAULT_NORM_VALUE,                      // NORM值 - 上位机命令: VN=?
-        .min_conditions_count = VIBRATION_DEFAULT_MIN_CONDITIONS_COUNT, // 最小条件数量 - 上位机命令: VC=?
     },
     /* 其他系统参数 */
     .idle_hook_enable = 0,      // 低功耗状态
@@ -1956,66 +1952,6 @@ uint32_t is25pl032_flash_set_norm(float norm)
 
 /**
  *******************************************************************************
- * @Description: 设置振动检测峰值阈值
- * @Parameters : vibration_peak_threshold - 峰值检测阈值（0.1-2.0g）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置模式4中峰值检测的阈值参数
- *               此参数用于检测冲击振动，数值越大检测越严格
- *               推荐范围：0.2-1.0g，根据钻井地层硬度调整
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_peak_threshold(float vibration_peak_threshold)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.peak_threshold = vibration_peak_threshold;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测峰值阈值
- * @Parameters : 无
- * @RetValue   : 峰值检测阈值（float）
- * @Note       : 获取当前设置的峰值检测阈值
- *               如果Flash中未保存配置，返回默认值0.5g
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_peak_threshold(void)
-{
-    return dev_cfg.u_cfg.cfg.vibration_cfg.peak_threshold;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置振动检测方差阈值
- * @Parameters : vibration_variance_threshold - 方差检测阈值（0.01-0.1）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置模式4中方差检测的阈值参数
- *               此参数用于检测振动变化，数值越大检测越严格
- *               推荐范围：0.02-0.06，根据振动稳定性调整
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_variance_threshold(float vibration_variance_threshold)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.variance_threshold = vibration_variance_threshold;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测方差阈值
- * @Parameters : 无
- * @RetValue   : 方差检测阈值（float）
- * @Note       : 获取当前设置的方差检测阈值
- *               如果Flash中未保存配置，返回默认值0.05
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_variance_threshold(void)
-{
-    return dev_cfg.u_cfg.cfg.vibration_cfg.variance_threshold;
-}
-
-/**
- *******************************************************************************
  * @Description: 设置振动检测RMS阈值
  * @Parameters : vibration_rms - RMS检测阈值（0.1-1.0g）
  * @RetValue   : 0-成功，非0-失败
@@ -2047,14 +1983,14 @@ float is25pl032_flash_get_vibration_rms(void)
 /**
  *******************************************************************************
  * @Description: 设置振动检测源选择
- * @Parameters : vibration_source - 振动检测源（0-GPIO，1-ADXL357）
+ * @Parameters : vibration_source - 振动检测源（0.0f-GPIO，1.0f-ADXL357）
  * @RetValue   : 0-成功，非0-失败
  * @Note       : 设置振动检测的源选择
- *               0：GPIO振动检测（传统方式）
- *               1：ADXL357传感器振动检测（推荐方式）
+ *               0.0f：GPIO振动检测（传统方式）
+ *               1.0f：ADXL357传感器振动检测（推荐方式）
  *******************************************************************************
  */
-uint32_t is25pl032_flash_set_vibration_source(uint8_t vibration_source)
+uint32_t is25pl032_flash_set_vibration_source(float vibration_source)
 {
     dev_cfg.u_cfg.cfg.vibration_cfg.vibration_source = vibration_source;
     return is25pl032_flash_save_dev_cfg();
@@ -2064,83 +2000,14 @@ uint32_t is25pl032_flash_set_vibration_source(uint8_t vibration_source)
  *******************************************************************************
  * @Description: 获取振动检测源选择
  * @Parameters : 无
- * @RetValue   : 振动检测源（0-GPIO，1-ADXL357）
+ * @RetValue   : 振动检测源（0.0f-GPIO，1.0f-ADXL357）
  * @Note       : 获取当前振动检测的源选择
- *               如果Flash中未保存配置，返回默认值0（GPIO）
+ *               如果Flash中未保存配置，返回默认值0.0f（GPIO）
  *******************************************************************************
  */
-uint8_t is25pl032_flash_get_vibration_source(void)
+float is25pl032_flash_get_vibration_source(void)
 {
     if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
         return VIBRATION_DEFAULT_SOURCE; // 默认使用GPIO
     return dev_cfg.u_cfg.cfg.vibration_cfg.vibration_source;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置振动检测平均值阈值
- * @Parameters : avg_threshold - 平均值检测阈值（0.01-0.2g）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置模式4中平均值检测的阈值参数
- *               此参数用于检测振动偏移，数值越大检测越严格
- *               推荐范围：0.03-0.1g，根据振动基准调整
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_avg_threshold(float avg_threshold)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.avg_threshold = avg_threshold;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测平均值阈值
- * @Parameters : 无
- * @RetValue   : 平均值检测阈值（float）
- * @Note       : 获取当前设置的平均值检测阈值
- *               如果Flash中未保存配置，返回默认值0.09g
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_avg_threshold(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return VIBRATION_DEFAULT_AVG_THRESHOLD; // 默认平均值阈值
-    return dev_cfg.u_cfg.cfg.vibration_cfg.avg_threshold;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置振动检测最小条件数量
- * @Parameters : min_conditions_count - 最小条件数量（1-5）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置模式4中至少满足的条件数量并保存到Flash
- *               此参数控制实时多条件检测模式的严格程度：
- *               - 1个条件：最宽松，容易误报
- *               - 2个条件：较宽松，适合软地层
- *               - 3个条件：标准设置，推荐用于正常钻井
- *               - 4个条件：较严格，适合关键检测
- *               - 5个条件：最严格，几乎无误报
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_min_conditions_count(uint8_t min_conditions_count)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.min_conditions_count = min_conditions_count;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测最小条件数量
- * @Parameters : 无
- * @RetValue   : 最小条件数量（1-5）
- * @Note       : 获取模式4中至少满足的条件数量
- *               如果Flash中未保存配置，返回默认值3
- *               此参数影响振动检测的灵敏度和可靠性
- *******************************************************************************
- */
-uint8_t is25pl032_flash_get_vibration_min_conditions_count(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return VIBRATION_DEFAULT_MIN_CONDITIONS_COUNT; // 默认最小条件数量
-    return dev_cfg.u_cfg.cfg.vibration_cfg.min_conditions_count;
 }

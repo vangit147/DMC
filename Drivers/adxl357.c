@@ -87,7 +87,6 @@ void Reset_Vibration_Stats(void)
     vibration_data.min_vibration = 99999;
     vibration_data.max_vibration = -99999;
     vibration_data.avg_vibration = 0;
-    vibration_data.vibration = 0;
 }
 
 void Get_Vibration_Data(void)

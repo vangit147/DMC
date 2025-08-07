@@ -306,7 +306,6 @@ void send_msg(void)
         float org_gy = filtered_sensor_signal.gy_raw;
         float org_temp = sensor_signal.t_raw;
         float temp = 0.0f;
-        float vibration_flag = 0.0f;
 
         uint8_t accfir, gyrofir;
         is25pl032_flash_get_param(&accfir, &gyrofir, &xr_limit, &yr_limit, &gain);
@@ -328,48 +327,53 @@ void send_msg(void)
         output_buffer[4] = sendLength & 0xff;
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.threshold, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.peak_threshold, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.variance_threshold, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.delta_threshold, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.rms_threshold, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.avg_threshold, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.peak, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.variance, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.norm, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.vibration_source, 4);
         {
-            float delta_float = (float)vibration_detector.data.delta;
+            float delta_float = (float)vibration_detector.sliding_window.delta_count;
             p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&delta_float, 4);
         }
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.rms, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.avg, 4);
-        // 将五个标志位合并到4字节数据中，使用低五位表示五个标志位
+        {
+            float rms_value = sqrtf(vibration_detector.sliding_window.sum_squared / vibration_detector.sliding_window.total_count);
+            p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&rms_value, 4);
+        }
+        // 将两个标志位合并到4字节数据中，使用低两位表示两个标志位
+        uint32_t flags_temp_2 = 0;
+        if (vibration_detector.state.delta_flag > 0.0f) flags_temp_2 |= 0x01;    // bit 0: delta_flag (十进制值: 1)
+        if (vibration_detector.state.rms_flag > 0.0f) flags_temp_2 |= 0x02;      // bit 1: rms_flag (十进制值: 2)
+        float flags_byte_2 = (float)flags_temp_2;
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&flags_byte_2, 4);
 
-        uint32_t flags_temp = 0;
-        if (vibration_detector.state.peak_flag > 0.0f) flags_temp |= 0x01;    // bit 0: peak_flag (十进制值: 1)
-        if (vibration_detector.state.variance_flag > 0.0f) flags_temp |= 0x02; // bit 1: variance_flag (十进制值: 2)
-        if (vibration_detector.state.delta_flag > 0.0f) flags_temp |= 0x04;    // bit 2: delta_flag (十进制值: 4)
-        if (vibration_detector.state.rms_flag > 0.0f) flags_temp |= 0x08;      // bit 3: rms_flag (十进制值: 8)
-        if (vibration_detector.state.avg_flag > 0.0f) flags_temp |= 0x10;      // bit 4: avg_flag (十进制值: 16)
-        float flags_byte = (float)flags_temp;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&flags_byte, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.vibration, 4);
-        // 获取震动状态并设置振动标志
-        checking_vibrating_gpio();
-        // 直接使用位运算计算振动标志，无需中间变量
-        vibration_flag = (float)(get_vibrating_flag() + (get_adxl357_vibrating_flag() << 4));
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag, 4);
         // 插入ADXL357三轴原始数据（12字节）
-        float adxl_x, adxl_y, adxl_z;
-        adxl357_get_adc_raw_data(&adxl_x, &adxl_y, &adxl_z);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_x, 4);  // X轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_y, 4);  // Y轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_z, 4);  // Z轴原始加速度数据
+        float adxl_x_2, adxl_y_2, adxl_z_2;
+        adxl357_get_adc_raw_data(&adxl_x_2, &adxl_y_2, &adxl_z_2);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_x_2, 4);  // X轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_y_2, 4);  // Y轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_z_2, 4);  // Z轴原始加速度数据
 
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        // 6. 振动数据（4字节）
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.vibration, 4);  // 振动数据
+
+        // 7. 振动标志（4字节）
+        // 更新GPIO振动检测状态
+        checking_vibrating_gpio();
+        float vibration_flag_float = (float)(get_vibrating_flag() + (get_adxl357_vibrating_flag() << 4));
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);  // 振动标志
+
+        // 8. 当前加速度模长（4字节）
         float acc_norm;
         adxl357_get_adc_norm(&acc_norm);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm, 4);           // 当前加速度模长
+
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
         send_data_to_vd_tool(output_buffer, 89);
 
         p_uint8 = (uint8_t *)output_buffer;
@@ -380,6 +384,7 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&gain, 8);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&x_offset, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&y_offset, 4);
+
         *p_uint8++ = 0x54;
         *p_uint8++ = 0x09;
         *p_uint8++ = 0x55;
@@ -1189,85 +1194,74 @@ void send_msg(void)
         goto ok;
     }
 
-    // VD=? 获取振动检测完整数据
+    // ===== VD=? 获取振动检测完整数据 =====
+    // 功能：获取振动检测的完整数据包，包含配置参数、检测结果、传感器数据等
+    // 数据包格式：头部(5字节) + 振动源选择(1字节) + 配置参数(16字节) + 检测数据(12字节) + 传感器数据(12字节) + 振动状态(8字节) + 加速度模长(4字节) + 尾部(3字节) = 61字节
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'D' && receiveMsg[2] == '=' && receiveMsg[3] == '?') {
-        // 获取震动状态
+        // 更新GPIO振动检测状态
         checking_vibrating_gpio();
 
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x1E;
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        sendLength = 86;  // 振动数据总长度
+        uint8_t flag = 0x1E;  // 命令标识符
+
+        // ===== 数据包头部（5字节）=====
+        *p_uint8++ = 0x55;  // 包头标识
+        *p_uint8++ = flag;   // 命令标识
+        *p_uint8++ = 0x54;  // 数据标识
+        *p_uint8++ = 0x00;  // 数据长度高字节
+        *p_uint8++ = 0x40;  // 数据长度低字节
+        sendLength = 64;     // 数据包总长度：头部5字节 + 振动源选择4字节 + 配置参数16字节 + 检测数据12字节 + 传感器数据12字节 + 振动状态8字节 + 加速度模长4字节 + 尾部3字节 = 64字节
         output_buffer[3] = sendLength >> 16 & 0xff;
         output_buffer[4] = sendLength & 0xff;
 
-        // 1. 振动检测器使能状态（1字节）
-        uint8_t vibration_source = vibration_detector.config.vibration_source;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_source, 1);             // 振动检测源选择
+        // ===== 振动检测源选择（4字节）=====
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.vibration_source, 4);  // 振动检测源选择：0.0f=GPIO，1.0f=ADXL357
 
-        // 2. 振动检测器最小条件数量（1字节）
-        uint8_t min_conditions = vibration_detector.config.min_conditions_count;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&min_conditions, 1);      // 最小条件数量
-
-        // 3. 振动检测器配置参数（24字节）
+        // ===== 振动检测配置参数（16字节）=====
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.threshold, 4);        // 振动阈值
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.peak_threshold, 4);    // 峰值检测阈值
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.variance_threshold, 4); // 方差检测阈值
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.delta_threshold, 4);   // 差值检测阈值
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.rms_threshold, 4);     // RMS检测阈值
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.avg_threshold, 4);     // 平均值检测阈值
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.norm, 4);              // NORM值
 
-        // 4. 振动检测器数据（20字节）
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.peak, 4);      // 峰峰值
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.variance, 4);  // 方差
+        // ===== 振动检测数据（12字节）=====
         {
-            float delta_float = (float)vibration_detector.data.delta;
-            p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&delta_float, 4);                   // 差值计数
+            float delta_float = (float)vibration_detector.sliding_window.delta_count;
+            p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&delta_float, 4);  // 差值计数：8秒窗口内超过阈值的次数
         }
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.rms, 4);       // 均方根值
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.data.avg, 4);       // 平均值
-
-        // 5. 振动检测器状态标志（4字节）- 将五个标志位合并到4字节数据中
-
+        {
+            float rms_value = sqrtf(vibration_detector.sliding_window.sum_squared / vibration_detector.sliding_window.total_count);
+            p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&rms_value, 4);     // RMS值：8秒窗口内的均方根值
+        }
+        // 振动检测标志位（4字节）- 使用低两位表示两个检测条件
         uint32_t flags_temp_2 = 0;
-        if (vibration_detector.state.peak_flag > 0.0f) flags_temp_2 |= 0x01;    // bit 0: peak_flag (十进制值: 1)
-        if (vibration_detector.state.variance_flag > 0.0f) flags_temp_2 |= 0x02; // bit 1: variance_flag (十进制值: 2)
-        if (vibration_detector.state.delta_flag > 0.0f) flags_temp_2 |= 0x04;    // bit 2: delta_flag (十进制值: 4)
-        if (vibration_detector.state.rms_flag > 0.0f) flags_temp_2 |= 0x08;      // bit 3: rms_flag (十进制值: 8)
-        if (vibration_detector.state.avg_flag > 0.0f) flags_temp_2 |= 0x10;      // bit 4: avg_flag (十进制值: 16)
+        if (vibration_detector.state.delta_flag > 0.0f) flags_temp_2 |= 0x01;    // bit 0: 差值检测条件满足
+        if (vibration_detector.state.rms_flag > 0.0f) flags_temp_2 |= 0x02;      // bit 1: RMS检测条件满足
         float flags_byte_2 = (float)flags_temp_2;
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&flags_byte_2, 4);
 
-        // 插入ADXL357三轴原始数据（12字节）
+        // ===== ADXL357三轴原始数据（12字节）=====
         float adxl_x_2, adxl_y_2, adxl_z_2;
         adxl357_get_adc_raw_data(&adxl_x_2, &adxl_y_2, &adxl_z_2);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_x_2, 4);  // X轴原始加速度数据
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_y_2, 4);  // Y轴原始加速度数据
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_z_2, 4);  // Z轴原始加速度数据
 
-        // 6. 振动数据（4字节）
+        // ===== 振动状态数据（8字节）=====
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.vibration, 4);  // 振动数据
-
-        // 7. 振动标志（4字节）
         float vibration_flag_float = (float)(get_vibrating_flag() + (get_adxl357_vibrating_flag() << 4));
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);  // 振动标志
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);      // 振动标志：低4位=GPIO振动，高4位=ADXL357振动
 
-        // 8. 当前加速度模长（4字节）
+        // ===== 加速度模长数据（4字节）=====
         float acc_norm;
         adxl357_get_adc_norm(&acc_norm);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm, 4);           // 当前加速度模长
 
-        // 9. Flash中存储的模长（4字节）
-        float acc_norm_in_flash = is25pl032_flash_get_norm();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm_in_flash, 4);  // Flash中存储的模长
+        // ===== 数据包尾部（3字节）=====
+        *p_uint8++ = 0x54;  // 数据结束标识
+        *p_uint8++ = flag;   // 命令标识
+        *p_uint8++ = 0x55;  // 包尾标识
 
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
+        // 发送完整的振动检测数据包（64字节）
         send_data_to_vd_tool(output_buffer, sendLength);
         isSend = 0;
     }
@@ -1389,126 +1383,6 @@ void send_msg(void)
         isSend = 0;
     }
 
-    // DP=数值 设置振动峰值检测阈值
-    // 功能：设置峰值检测的阈值参数
-    // 参数：0.1-2.0g之间的浮点数
-    // 说明：此参数用于检测冲击振动，数值越大检测越严格
-    // 推荐范围：0.2-1.0g，根据钻井地层硬度调整
-    // 参数验证：确保输入值在有效范围内（<50.0g）
-    // 保存方式：立即保存到Flash
-    // 生效时间：设置后立即生效，无需重启系统
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'P' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
-    {
-        char *data = (char *)receiveMsg + 3;
-        uint8_t temp[24];
-        uint8_t tempIndex = 0;
-        uint8_t dataIndex = 0;
-
-        // 解析振动峰值数据
-        tempIndex = 0;
-        while (data[dataIndex] != '\0')
-        {
-            temp[tempIndex++] = data[dataIndex++];
-        }
-        temp[tempIndex] = '\0';
-
-        // 写入振动峰值数据（<50.0g范围验证）
-        float vibration_threshold = atof((const char *)temp);
-        if (vibration_threshold > 50.0f)
-            goto error;
-        is25pl032_flash_set_vibration_peak_threshold(vibration_threshold);
-        isSend = 0;
-        goto ok;
-    }
-
-    // DP=? 获取振动峰值检测阈值
-    // 功能：查询当前设置的峰值检测阈值
-    // 返回值：0.1-2.0g之间的浮点数
-    // 说明：此参数用于检测冲击振动，数值越大检测越严格
-    // 应用场景：
-    //   - 软地层：0.2-0.4g（降低阈值，提高检测灵敏度）
-    //   - 中等地层：0.4-0.6g（标准设置）
-    //   - 硬地层：0.6-1.0g（提高阈值，减少误报）
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'P' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
-    {
-        // 获取振动峰值数据
-        float vibration_threshold = 0.0f;
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x22; // 峰值检测阈值查询命令标识
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        vibration_threshold = is25pl032_flash_get_vibration_peak_threshold();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_threshold, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    // DV=数值 设置振动方差检测阈值
-    // 功能：设置模式4中方差检测的阈值参数
-    // 参数：0.01-0.1之间的浮点数
-    // 说明：此参数用于检测振动变化，数值越大检测越严格
-    // 推荐范围：0.02-0.06，根据振动稳定性调整
-    // 参数验证：确保输入值在有效范围内（<50.0g）
-    // 保存方式：立即保存到Flash
-    // 生效时间：设置后立即生效，无需重启系统
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'V' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
-    {
-        char *data = (char *)receiveMsg + 3;
-        uint8_t temp[24];
-        uint8_t tempIndex = 0;
-        uint8_t dataIndex = 0;
-
-        // 解析振动方差阈值数据
-        tempIndex = 0;
-        while (data[dataIndex] != '\0')
-        {
-            temp[tempIndex++] = data[dataIndex++];
-        }
-        temp[tempIndex] = '\0';
-
-        // 写入振动方差阈值数据（<50.0g范围验证）
-        float vibration_threshold = atof((const char *)temp);
-        if (vibration_threshold > 50.0f)
-            goto error;
-        is25pl032_flash_set_vibration_variance_threshold(vibration_threshold);
-        isSend = 0;
-        goto ok;
-    }
-
-    // DV=? 获取振动方差检测阈值
-    // 功能：查询当前设置的方差检测阈值
-    // 返回值：0.01-0.1之间的浮点数
-    // 说明：此参数用于检测振动变化，数值越大检测越严格
-    // 应用场景：
-    //   - 软地层：0.02-0.06g（降低阈值，提高检测灵敏度）
-    //   - 中等地层：0.06-0.1g（标准设置）
-    //   - 硬地层：0.1-0.15g（提高阈值，减少误报）
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'V' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
-    {
-        // 获取振动方差数据
-        float vibration_threshold = 0.0f;
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x23; // 方差检测阈值查询命令标识
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        vibration_threshold = is25pl032_flash_get_vibration_variance_threshold();
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_threshold, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
     // DR=数值 设置振动RMS阈值
     // 功能：设置模式4中RMS检测的阈值参数
     // 参数：0.1-1.0g之间的浮点数
@@ -1571,21 +1445,21 @@ void send_msg(void)
 
     // VS=? 获取振动检测源选择
     // 功能：查询当前振动检测的源选择
-    // 返回值：0或1
-    // 说明：0=GPIO振动检测，1=ADXL357传感器振动检测
+    // 返回值：0.0f或1.0f
+    // 说明：0.0f=GPIO振动检测，1.0f=ADXL357传感器振动检测
     // 应用场景：
-    //   - 0：GPIO振动检测（传统方式）
-    //   - 1：ADXL357传感器振动检测（推荐方式）
+    //   - 0.0f：GPIO振动检测（传统方式）
+    //   - 1.0f：ADXL357传感器振动检测（推荐方式）
     if (receiveMsg[0] == 'V' && receiveMsg[1] == 'S' && receiveMsg[2] == '=' && receiveMsg[3] == '?') {
-        uint8_t vibration_source = is25pl032_flash_get_vibration_source();
+        float vibration_source = is25pl032_flash_get_vibration_source();
         uint8_t *p_uint8 = (uint8_t *)output_buffer;
         uint8_t flag = 0x25; // 振动检测源选择查询命令标识
         *p_uint8++ = 0x55;
         *p_uint8++ = flag;
         *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_source, 1);
+        *p_uint8++ = 0x04;
+        *p_uint8++ = 0x00;
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_source, 4);
         *p_uint8++ = 0x54;
         *p_uint8++ = flag;
         *p_uint8++ = 0x55;
@@ -1595,7 +1469,7 @@ void send_msg(void)
 
     // VS=数值 设置振动检测源选择
     // 功能：设置振动检测的源选择
-    // 参数：0或1
+    // 参数：0或1（内部转换为0.0f或1.0f）
     // 说明：0=GPIO振动检测，1=ADXL357传感器振动检测
     // 参数验证：确保输入值为0或1
     // 保存方式：立即保存到Flash
@@ -1614,9 +1488,9 @@ void send_msg(void)
         }
         temp[tempIndex] = '\0';
 
-        // 写入振动检测源选择数据（0或1验证）
-        uint8_t vibration_source = (uint8_t)atoi((const char *)temp);
-        if (vibration_source != 0 && vibration_source != 1) {
+        // 写入振动检测源选择数据（0或1验证，内部转换为0.0f或1.0f）
+        float vibration_source = (float)atoi((const char *)temp);
+        if (vibration_source != VIBRATION_SOURCE_GPIO && vibration_source != VIBRATION_SOURCE_ADXL357) {
             goto error; // 振动检测源必须为0或1，超出范围返回错误
         }
 
@@ -1624,62 +1498,6 @@ void send_msg(void)
         if (result != 0) {
             goto error; // 设置失败，返回错误
         }
-        isSend = 0;
-        goto ok;
-    }
-
-    // DA=? 获取振动平均值阈值
-    // 功能：查询当前设置的平均值检测阈值
-    // 返回值：0.01-0.2g之间的浮点数
-    // 说明：此参数用于检测振动偏移，数值越大检测越严格
-    // 应用场景：
-    //   - 软地层：0.03-0.06g（降低阈值，提高检测灵敏度）
-    //   - 中等地层：0.06-0.09g（标准设置）
-    //   - 硬地层：0.09-0.12g（提高阈值，减少误报）
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'A' && receiveMsg[2] == '=' && receiveMsg[3] == '?') {
-        float vibration_threshold = is25pl032_flash_get_vibration_avg_threshold();
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x26; // 振动平均值阈值查询命令标识
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_threshold, 4);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    // DA=数值 设置振动平均值阈值
-    // 功能：设置模式4中平均值检测的阈值参数
-    // 参数：0.01-0.2g之间的浮点数
-    // 说明：此参数用于检测振动偏移，数值越大检测越严格
-    // 推荐范围：0.03-0.1g，根据振动基准调整
-    // 参数验证：确保输入值在有效范围内（<50.0g范围验证）
-    // 保存方式：立即保存到Flash
-    // 生效时间：设置后立即生效，无需重启系统
-    if (receiveMsg[0] == 'D' && receiveMsg[1] == 'A' && receiveMsg[2] == '=' && receiveMsg[3] != '?') {
-        char *data = (char *)receiveMsg + 3;
-        uint8_t temp[24];
-        uint8_t tempIndex = 0;
-        uint8_t dataIndex = 0;
-
-        // 解析振动平均值阈值数据
-        tempIndex = 0;
-        while (data[dataIndex] != '\0')
-        {
-            temp[tempIndex++] = data[dataIndex++];
-        }
-        temp[tempIndex] = '\0';
-
-        // 写入振动平均值阈值数据（<50.0g范围验证）
-        float vibration_threshold = atof((const char *)temp);
-        if (vibration_threshold > 50.0f)
-            goto error;
-        is25pl032_flash_set_vibration_avg_threshold(vibration_threshold);
         isSend = 0;
         goto ok;
     }
@@ -1736,66 +1554,6 @@ void send_msg(void)
         if (norm_value <= 0.0f)
             goto error; // NORM值必须大于0，超出范围返回错误
         uint32_t result = is25pl032_flash_set_norm(norm_value);
-        if (result != 0) {
-            goto error; // 设置失败，返回错误
-        }
-        isSend = 0;
-        goto ok;
-    }
-
-    // VC=? 获取振动检测最小条件数量
-    // 功能：查询当前模式4中至少满足的条件数量
-    // 返回值：1-5之间的整数，表示最小条件数量
-    // 说明：此参数控制振动检测的严格程度，数值越大检测越严格
-    // 应用场景：
-    //   - 1个条件：最宽松，容易误报，仅用于调试
-    //   - 2个条件：较宽松，适合软地层钻井
-    //   - 3个条件：标准设置，推荐用于正常钻井
-    //   - 4个条件：较严格，适合关键检测或硬地层
-    //   - 5个条件：最严格，几乎无误报，适合高精度检测
-    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'C' && receiveMsg[2] == '=' && receiveMsg[3] == '?') {
-        uint8_t min_conditions_count = is25pl032_flash_get_vibration_min_conditions_count();
-        uint8_t *p_uint8 = (uint8_t *)output_buffer;
-        uint8_t flag = 0x28; // 振动检测最小条件数量查询命令标识
-        *p_uint8++ = 0x55;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x54;
-        *p_uint8++ = 0x01;
-        *p_uint8++ = 0x01;
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&min_conditions_count, 1);
-        *p_uint8++ = 0x54;
-        *p_uint8++ = flag;
-        *p_uint8++ = 0x55;
-        sendLength = (uint32_t)p_uint8 - (uint32_t)output_buffer;
-        isSend = 0;
-    }
-
-    // VC=数值 设置振动检测最小条件数量
-    // 功能：设置模式4中至少满足的条件数量
-    // 参数：1-5之间的整数
-    // 说明：1=最宽松，2=较宽松，3=标准，4=较严格，5=最严格
-    // 参数验证：确保输入值在有效范围内（1-5）
-    // 保存方式：立即保存到Flash
-    // 生效时间：设置后立即生效，无需重启系统
-    if (receiveMsg[0] == 'V' && receiveMsg[1] == 'C' && receiveMsg[2] == '=' && receiveMsg[3] != '?') {
-        char *data = (char *)receiveMsg + 3;
-        uint8_t temp[24];
-        uint8_t tempIndex = 0;
-        uint8_t dataIndex = 0;
-
-        // 解析最小条件数量数据
-        tempIndex = 0;
-        while (data[dataIndex] != '\0')
-        {
-            temp[tempIndex++] = data[dataIndex++];
-        }
-        temp[tempIndex] = '\0';
-
-        // 写入最小条件数量数据（1-5范围验证）
-        uint8_t min_conditions_count = (uint8_t)atoi((const char *)temp);
-        if (min_conditions_count < 1 || min_conditions_count > 5)
-            goto error; // 条件数量必须在1-5之间，超出范围返回错误
-        uint32_t result = is25pl032_flash_set_vibration_min_conditions_count(min_conditions_count);
         if (result != 0) {
             goto error; // 设置失败，返回错误
         }
