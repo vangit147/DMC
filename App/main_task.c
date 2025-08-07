@@ -400,6 +400,10 @@ static void on_100ms_timer_event(void)
     // 获取震动状态
     checking_vibrating_gpio();
 
+    // 静态数据收集（以100ms为单位，每100ms调用一次）
+    uint8_t is_static_state = (get_vibrating_flag() == 0) ? 1 : 0; // 静止状态
+    mud_pulse_collect_static_data(&mud_pulse, is_static_state);
+
     // 每秒更新一次数据
     rtc_timeout++;
     if (last_timestamp != timestamp || rtc_timeout > 10)

@@ -48,9 +48,7 @@ typedef __packed struct
     uint8_t double_stage;           // 双脉冲阶段
     uint8_t tx_request;             // 发送请求
     uint32_t current_retry_count;   // 当前静态脉冲重传计数
-    uint32_t retry_interval_counter; // 静态脉冲重传间隔计时器
     uint32_t period_counter;        // 动态脉冲周期性发送计数
-    uint8_t vibration_triggered;    // 振动触发标志
     uint32_t vibration_cooldown;    // 振动冷却计时器
     uint8_t tx_started;             // 发送启动标志
     uint8_t timer_triggered;        // 动态脉冲定时发送触发标志
@@ -78,7 +76,7 @@ typedef struct
     float avg_temp;    // 平均温度
     float avg_hs;      // 平均高边
     float avg_voltage; // 平均电压
-    uint8_t count;     // 静态数据采集计数
+    uint32_t count;     // 静态数据采集计数
 } mud_pulse_data_collect_t;
 
 // 泥浆脉冲控制结构体
@@ -105,10 +103,10 @@ void mud_pulse_timer_isr(mud_pulse_t *pulse);
 // 更新泥浆脉冲数据（包括静态和动态脉冲）
 void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState);
 
-// 初始化静态脉冲数据采集
-void mud_pulse_init_collect(mud_pulse_t *pulse);
+// 静态数据收集函数（以100ms为单位）
+void mud_pulse_collect_static_data(mud_pulse_t *pulse, uint8_t is_static_state);
 
-// 设置泥浆脉冲数据格式
+// 设置数据
 void mud_pulse_set_data(mud_pulse_t *pulse);
 
 // 全局变量声明
