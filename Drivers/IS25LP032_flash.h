@@ -60,10 +60,14 @@ extern "C"
         float gz_dps_sdv_max;       // Z轴角速度标准差最大值
         float gz_dps_sdv_min;       // Z轴角速度标准差最小值
         float std_dev_ax_ay_max;    // XY轴加速度标准差之和的最大值
-        float vibration_data_min;
-        float vibration_data_max;
-        float vibration_data_avg;
+        float vibration_data_min;   // 振动数据最小值
+        float vibration_data_max;   // 振动数据最大值
+        float vibration_data_avg;   // 振动数据平均值
         uint32_t flag;             // 振动标志
+        uint32_t vibration_delta_count_total;     // 周期内总差值计数
+        uint32_t vibration_rms_over_count_total;  // 周期内总RMS超过次数
+        float vibration_rms_current;              // 当前RMS值
+        float vibration_delta_max;                // 周期内差值最大值
         int c0_num_max;            // 计数器0最大值
         int c0_num_min;            // 计数器0最小值
         int c1_num_max;            // 计数器1最大值

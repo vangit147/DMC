@@ -488,10 +488,27 @@ static void on_100ms_timer_event(void)
             if (get_adxl357_vibrating_flag())
                 log.flag |= LOG_FLAG_VIBRATING_FOR_ADXL357;
 
+            // 获取ADXL357振动检测详细数据
+            log.vibration_delta_count_total = vibration_data.delta_count_total;
+            log.vibration_rms_over_count_total = vibration_data.rms_over_count_total;
+            log.vibration_delta_max = vibration_data.max_delta_value_in_period;
+            log.vibration_rms_current = vibration_data.current_rms_value;
+
             log.vibration_data_min = vibration_data.min_vibration;
             log.vibration_data_max = vibration_data.max_vibration;
             log.vibration_data_avg = vibration_data.avg_vibration;
-            printf("vibration_data.min_vibration=%f,vibration_data.max_vibration=%f,vibration_data.avg_vibration=%f log.flag=%d\r\n", vibration_data.min_vibration, vibration_data.max_vibration, vibration_data.avg_vibration, log.flag);
+
+            // 完善调试信息打印：包含所有ADXL357振动检测相关数据
+//            printf("ADXL357_DEBUG: min=%.3f, max=%.3f, avg=%.3f, delta_count=%d, rms_over_count=%d, current_rms=%.3f, max_delta=%.3f, log_flag=0x%02X\r\n",
+//                   vibration_data.min_vibration,
+//                   vibration_data.max_vibration,
+//                   vibration_data.avg_vibration,
+//                   vibration_data.delta_count_total,
+//                   vibration_data.rms_over_count_total,
+//                   vibration_data.current_rms_value,
+//                   vibration_data.max_delta_value_in_period,
+//                   log.flag);
+
             Reset_Vibration_Stats();
 
             log.s_f32_36V = get_36V_voltage();

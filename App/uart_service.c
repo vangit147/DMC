@@ -357,7 +357,7 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.vibration, 4);  // 振动数据
 
         // 7. 振动标志（4字节）
-        // 更新GPIO振动检测状态
+        // 更新GPIO振动检测状态并计算振动标志
         checking_vibrating_gpio();
         float vibration_flag_float = (float)(get_vibrating_flag() + (get_adxl357_vibrating_flag() << 4));
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);  // 振动标志

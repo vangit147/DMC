@@ -61,6 +61,10 @@ static float   acc_norm;
 
 TaskHandle_t     adx357_task_handle;
 adxl357_vibration_data_t vibration_data;
+
+// RMS计算相关的静态变量（用于日志统计）
+static float sum_squared = 0.0f;  // 用于RMS计算的平方和
+static uint32_t rms_count = 0;    // 用于RMS计算的数据点计数
 /******************************** Functions **********************************/
 void adxl357_get_adc_norm(float* norm)
 {
@@ -87,6 +91,16 @@ void Reset_Vibration_Stats(void)
     vibration_data.min_vibration = 99999;
     vibration_data.max_vibration = -99999;
     vibration_data.avg_vibration = 0;
+
+    // 重置日志记录相关的统计字段
+    vibration_data.delta_count_total = 0;
+    vibration_data.rms_over_count_total = 0;
+    vibration_data.current_rms_value = 0.0f;
+    vibration_data.max_delta_value_in_period = 0.0f;
+
+    // 重置RMS计算相关的静态变量
+    sum_squared = 0.0f;
+    rms_count = 0;
 }
 
 void Get_Vibration_Data(void)
@@ -94,6 +108,14 @@ void Get_Vibration_Data(void)
     vibration_sensor_data_t accel;
     vibration_sensor_data_t raw_acc;
     float v_data;
+
+    // 获取当前配置参数（参考vibration_detector.c的实现）
+    // 注意：此函数以1ms频率调用，而振动检测以5ms频率调用
+    // 虽然采样频率不同，但使用相同的计算方法和阈值，确保统计逻辑一致
+    float threshold = is25pl032_flash_get_vibration_threshold();        // 基础振动阈值
+    float delta_threshold = is25pl032_flash_get_vibration_delta_threshold(); // 差值检测阈值
+    float rms_threshold = is25pl032_flash_get_vibration_rms();          // RMS检测阈值
+
     adxl357_get_adc_data(&accel.x, &accel.y, &accel.z);
     adxl357_get_adc_raw_data(&raw_acc.x, &raw_acc.y, &raw_acc.z);
 
@@ -102,12 +124,45 @@ void Get_Vibration_Data(void)
 
     vibration_data.vibration = v_data;
 
+    // 更新基本统计信息
     if (v_data < vibration_data.min_vibration)
-		    vibration_data.min_vibration = v_data;
+        vibration_data.min_vibration = v_data;
     if (v_data > vibration_data.max_vibration)
-		    vibration_data.max_vibration = v_data;
-		vibration_data.avg_vibration = (vibration_data.avg_vibration * vibration_data.account + v_data) / (vibration_data.account + 1);
-		vibration_data.account++;
+        vibration_data.max_vibration = v_data;
+
+    // 防止account溢出（虽然120秒内不太可能，但作为安全措施）
+    if (vibration_data.account < 0xFFFFFFFF) {
+        vibration_data.avg_vibration = (vibration_data.avg_vibration * vibration_data.account + v_data) / (vibration_data.account + 1);
+        vibration_data.account++;
+    }
+
+    // 更新RMS计算（参考vibration_detector.c的滑动窗口RMS计算）
+    // 防止rms_count溢出
+    if (rms_count < 0xFFFFFFFF) {
+        sum_squared += v_data * v_data;
+        rms_count++;
+
+        // 计算当前RMS值（使用所有历史数据）
+        if (rms_count > 0) {
+            vibration_data.current_rms_value = sqrtf(sum_squared / rms_count);
+        }
+    }
+
+    // 差值检测（参考vibration_detector.c的差值计算）
+    float current_delta = fabs(threshold - v_data);
+    if (current_delta > delta_threshold) {
+        vibration_data.delta_count_total++;
+    }
+
+    // 更新差值最大值统计
+    if (current_delta > vibration_data.max_delta_value_in_period) {
+        vibration_data.max_delta_value_in_period = current_delta;
+    }
+
+    // RMS超过阈值检测（参考vibration_detector.c的RMS检测逻辑）
+    if (fabs(vibration_data.current_rms_value - threshold) > threshold * rms_threshold) {
+        vibration_data.rms_over_count_total++;
+    }
 }
 static uint8_t adxl357_read_reg(uint32_t reg)
 {
