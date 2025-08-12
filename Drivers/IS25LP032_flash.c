@@ -14,8 +14,8 @@
 /************* Included files, Macros, Various and Declarations ***************/
 #include "IS25LP032_flash.h"
 #include "mud_pulse.h"
+#include "../version.h"  // 包含版本号定义
 
-#define TGDMC "TG250804_0.2"
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
 #define FLASH_WREN 0X06

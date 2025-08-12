@@ -6,3 +6,6 @@
 MDK-ARM/inclinometer_dynamic.uvoptx
 MDK-ARM/inclinometer_dynamic.uvguix.*
 Out/
+
+# Version file
+version.h
