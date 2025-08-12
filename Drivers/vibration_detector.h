@@ -24,6 +24,12 @@
   * - DR=?: 获取振动RMS检测阈值 - 推荐范围：0.15-0.5g
   * - DR=数值: 设置振动RMS检测阈值 - 参数范围：0.1-1.0g，<50.0g验证
   *
+  * 【触发次数比例命令】
+  * - DTR=?: 获取差值触发次数比例 - 范围：1-10，对应10%-100%
+  * - DTR=数值: 设置差值触发次数比例 - 参数：1-10（对应1600个数据点的10%-100%）
+  * - RTR=?: 获取RMS触发次数比例 - 范围：1-10，对应10%-100%
+  * - RTR=数值: 设置RMS触发次数比例 - 参数：1-10（对应1600个数据点的10%-100%）
+  *
   * 【高级配置命令】
   * - VN=?: 获取NORM值 - 通常为49526.6797，用于三轴加速度合成计算
   * - VN=数值: 设置NORM值 - 参数：大于0的浮点数
@@ -57,17 +63,6 @@ extern "C" {
 #define VIBRATION_SEGMENT_SIZE 200           // 每段200个数据点
 #define VIBRATION_SLIDING_WINDOW_SEGMENTS (VIBRATION_SLIDING_WINDOW_SIZE / VIBRATION_SEGMENT_SIZE)  // 分段数量：1600/200 = 8段
 
-// 子窗口检测阈值比例（70%）
-#define VIBRATION_SUB_WINDOW_THRESHOLD_RATIO 7
-#define VIBRATION_SUB_WINDOW_THRESHOLD_DENOMINATOR 10
-
-// 子窗口检测阈值计算宏（70%阈值）
-#define VIBRATION_SUB_WINDOW_THRESHOLD_COUNT (VIBRATION_SLIDING_WINDOW_SIZE * VIBRATION_SUB_WINDOW_THRESHOLD_RATIO / VIBRATION_SUB_WINDOW_THRESHOLD_DENOMINATOR)
-
-// 动态触发次数阈值（使用整数计算，避免浮点数宏定义问题）
-// 基于1600个数据点的70%作为触发阈值
-#define VIBRATION_TRIGGER_COUNT_THRESHOLD_INT (VIBRATION_SLIDING_WINDOW_SIZE * VIBRATION_SUB_WINDOW_THRESHOLD_RATIO / VIBRATION_SUB_WINDOW_THRESHOLD_DENOMINATOR)
-
 // 默认参数定义（按照代码使用顺序排列）
 #define DEFAULT_VIBRATION_THRESHOLD      1.0f    // 默认振动阈值 1.0g - 上位机命令: VT=?
                                                    // 推荐范围：0.5-1.5g，根据钻井环境调整
@@ -89,6 +84,15 @@ extern "C" {
 
 #define DEFAULT_NORM_VALUE               49526.6797f  // 默认NORM值 - 上位机命令: VN=?
                                                        // 用于计算三轴加速度的合成值，通常不需要修改
+
+// 新增：触发次数比例默认值
+#define DEFAULT_DELTA_TRIGGER_RATIO      7            // 默认差值触发次数比例：7（70%）
+                                                       // 对应1600个数据点的70%（1120次）
+                                                       // 上位机命令：DTR=?（查询），DTR=数值（设置）
+
+#define DEFAULT_RMS_TRIGGER_RATIO        7            // 默认RMS触发次数比例：7（70%）
+                                                       // 对应1600个数据点的70%（1120次）
+                                                       // 上位机命令：RTR=?（查询），RTR=数值（设置）
 
 // 振动检测状态标志常量
 #define VIBRATION_FLAG_DISABLED             0.0f     // 标志禁用状态
@@ -147,6 +151,15 @@ typedef __packed struct
     float norm;                // ADXL357三轴加速度模长NORM值
                                // 用于计算三轴加速度的合成值，通常为49526.6797
                                // 上位机命令：VN=?（查询），VN=数值（设置）
+
+    // 新增：触发次数比例参数（范围[1,10]，对应10%-100%）
+    uint32_t delta_trigger_ratio;  // 差值触发次数比例：1-10，对应1600个数据点的10%-100%
+                                   // 上位机命令：DTR=?（查询），DTR=数值（设置）
+                                   // 1=10%（160次），2=20%（320次），...，10=100%（1600次）
+
+    uint32_t rms_trigger_ratio;    // RMS超过阈值次数比例：1-10，对应1600个数据点的10%-100%
+                                   // 上位机命令：RTR=?（查询），RTR=数值（设置）
+                                   // 1=10%（160次），2=20%（320次），...，10=100%（1600次）
 } vibration_config_t;
 
 // 振动检测状态结构体

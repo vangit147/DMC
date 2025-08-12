@@ -232,7 +232,7 @@ void vibration_sliding_window_detect(vibration_sliding_window_t *window,
 
     // 条件1：频率检测 - 差值计数超过阈值（基于1600个数据点）
     uint8_t delta_condition = 0;
-    if (window->delta_count > VIBRATION_TRIGGER_COUNT_THRESHOLD_INT) {
+    if (window->delta_count > (VIBRATION_SLIDING_WINDOW_SIZE * detector->config.delta_trigger_ratio) / 10) {
         detector->state.delta_flag = VIBRATION_FLAG_ENABLED;
         delta_condition = 1;
     } else {
@@ -241,7 +241,7 @@ void vibration_sliding_window_detect(vibration_sliding_window_t *window,
 
     // 条件2：振幅检测 - RMS超过阈值（基于1600个数据点）
     uint8_t rms_condition = 0;
-    if (window->rms_over_threshold_count >= VIBRATION_SUB_WINDOW_THRESHOLD_COUNT) {
+    if (window->rms_over_threshold_count >= (VIBRATION_SLIDING_WINDOW_SIZE * detector->config.rms_trigger_ratio) / 10) {
         detector->state.rms_flag = VIBRATION_FLAG_ENABLED;
         rms_condition = 1;
     } else {
@@ -305,6 +305,8 @@ void vibration_detector_load_config(vibration_detector_t *detector)
     detector->config.rms_threshold = is25pl032_flash_get_vibration_rms();          // RMS检测阈值
     detector->config.norm = is25pl032_flash_get_norm();                            // NORM值
     detector->config.vibration_source = is25pl032_flash_get_vibration_source();    // 振动检测源选择
+    detector->config.delta_trigger_ratio = is25pl032_flash_get_delta_trigger_ratio(); // 差值触发次数比例
+    detector->config.rms_trigger_ratio = is25pl032_flash_get_rms_trigger_ratio();     // RMS触发次数比例
 }
 
 /**

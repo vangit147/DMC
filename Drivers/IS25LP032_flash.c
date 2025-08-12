@@ -203,6 +203,8 @@ static const CFG_T default_cfg = {
         .delta_threshold = DEFAULT_VIBRATION_DELTA_THRESHOLD,      // 差值检测阈值 - 上位机命令: DT=?
         .rms_threshold = VIBRATION_DEFAULT_RMS_THRESHOLD,         // RMS检测阈值 - 上位机命令: DR=?
         .norm = DEFAULT_NORM_VALUE,                      // NORM值 - 上位机命令: VN=?
+        .delta_trigger_ratio = DEFAULT_DELTA_TRIGGER_RATIO,       // 差值触发次数比例 - 上位机命令: DTR=?
+        .rms_trigger_ratio = DEFAULT_RMS_TRIGGER_RATIO,           // RMS触发次数比例 - 上位机命令: RTR=?
     },
     /* 其他系统参数 */
     .idle_hook_enable = 0,      // 低功耗状态
@@ -2010,4 +2012,68 @@ float is25pl032_flash_get_vibration_source(void)
     if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
         return VIBRATION_DEFAULT_SOURCE; // 默认使用GPIO
     return dev_cfg.u_cfg.cfg.vibration_cfg.vibration_source;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置差值触发次数比例
+ * @Parameters : delta_trigger_ratio - 差值触发次数比例（1-10）
+ * @RetValue   : 0-成功，非0-失败
+ * @Note       : 设置差值触发次数比例参数并保存到Flash
+ *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
+ *               此参数用于控制差值检测的敏感度
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_delta_trigger_ratio(uint32_t delta_trigger_ratio)
+{
+    dev_cfg.u_cfg.cfg.vibration_cfg.delta_trigger_ratio = delta_trigger_ratio;
+    return is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取差值触发次数比例
+ * @Parameters : 无
+ * @RetValue   : 差值触发次数比例（1-10）
+ * @Note       : 获取当前设置的差值触发次数比例
+ *               如果Flash中未保存配置，返回默认值7（70%）
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_get_delta_trigger_ratio(void)
+{
+    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
+        return DEFAULT_DELTA_TRIGGER_RATIO; // 默认70%
+    return dev_cfg.u_cfg.cfg.vibration_cfg.delta_trigger_ratio;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置RMS触发次数比例
+ * @Parameters : rms_trigger_ratio - RMS触发次数比例（1-10）
+ * @RetValue   : 0-成功，非0-失败
+ * @Note       : 设置RMS触发次数比例参数并保存到Flash
+ *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
+ *               此参数用于控制RMS检测的敏感度
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_set_rms_trigger_ratio(uint32_t rms_trigger_ratio)
+{
+    dev_cfg.u_cfg.cfg.vibration_cfg.rms_trigger_ratio = rms_trigger_ratio;
+    return is25pl032_flash_save_dev_cfg();
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取RMS触发次数比例
+ * @Parameters : 无
+ * @RetValue   : RMS触发次数比例（1-10）
+ * @Note       : 获取当前设置的RMS触发次数比例
+ *               如果Flash中未保存配置，返回默认值7（70%）
+ *******************************************************************************
+ */
+uint32_t is25pl032_flash_get_rms_trigger_ratio(void)
+{
+    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
+        return DEFAULT_RMS_TRIGGER_RATIO; // 默认70%
+    return dev_cfg.u_cfg.cfg.vibration_cfg.rms_trigger_ratio;
 }
