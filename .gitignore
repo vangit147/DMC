@@ -9,3 +9,12 @@ Out/
 
 # Version file
 version.h
+
+# JLink log file
+MDK-ARM/JLinkLog.txt
+
+# Markdown files
+*.md
+
+# Patch files
+*.patch
