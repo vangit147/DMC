@@ -270,9 +270,9 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&gyro_y, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&gyro_z, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temperature, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie1, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie2, 4);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie6, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie1, 4);//井斜辅1  inc_hs_data.inc1  井斜1
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie2, 4);//井斜辅2  inc_hs_data.inc2  井斜2
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&ie6, 4);//井斜主  inc_hs_data.good_inc 井斜3
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&x_radius, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&y_radius, 4);
 //        float acc_norm_in_flash = is25pl032_flash_get_norm();
