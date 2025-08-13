@@ -950,11 +950,11 @@ void main_task(void *p)
 
     if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680 || algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
     {
-        xTaskCreate(iam_20680ht_task, "iam_20680ht_task", 256, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
+        xTaskCreate(iam_20680ht_task, "iam_20680ht_task", 128, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
     }
     // 启动信号处理任务
     signal_process_init();
-    xTaskCreate(signal_process_task, "signal_process_task", 256, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
+    xTaskCreate(signal_process_task, "signal_process_task", 512, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
     xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
