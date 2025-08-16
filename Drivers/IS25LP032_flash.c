@@ -25,6 +25,13 @@
 
 static uint64_t flash_temp_buffer[512]; // 4K读写缓冲区
 
+/* Flash操作任务句柄和队列 */
+static TaskHandle_t flash_operation_task_handle = NULL;
+static QueueHandle_t flash_operation_queue = NULL;
+
+/* 新增：SPI总线互斥信号量 */
+static SemaphoreHandle_t flash_spi_mutex = NULL;
+
 /*
 FLASH 数据区定义
 +--------------------------+
@@ -550,6 +557,19 @@ int32_t is25pl032_flash_erase_sector(uint32_t address, uint32_t check_empty)
     uint32_t cmd_address;
     uint8_t *p_cmd_address = (uint8_t *)&cmd_address;
 
+    // 设置Flash操作状态
+    extern void set_flash_operation_status(bool in_progress);
+    set_flash_operation_status(true);
+
+    // 获取SPI总线互斥锁
+    if (flash_spi_mutex != NULL) {
+        if (xSemaphoreTake(flash_spi_mutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            printf("Failed to acquire flash SPI mutex!\r\n");
+            set_flash_operation_status(false);
+            return -1;
+        }
+    }
+
     address &= 0xfffff000;
     wren_reg = FLASH_WREN;
     p_cmd_address[0] = FLASH_SER;
@@ -596,6 +616,14 @@ int32_t is25pl032_flash_erase_sector(uint32_t address, uint32_t check_empty)
         }
     }
 
+    // 释放SPI总线互斥锁
+    if (flash_spi_mutex != NULL) {
+        xSemaphoreGive(flash_spi_mutex);
+    }
+
+    // 清除Flash操作状态
+    set_flash_operation_status(false);
+
     return 0;
 }
 /**
@@ -635,6 +663,19 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
     uint8_t wren_reg;
     uint8_t timeout;
 
+    // 设置Flash操作状态
+    extern void set_flash_operation_status(bool in_progress);
+    set_flash_operation_status(true);
+
+    // 获取SPI总线互斥锁
+    if (flash_spi_mutex != NULL) {
+        if (xSemaphoreTake(flash_spi_mutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            printf("Failed to acquire flash SPI mutex!\r\n");
+            set_flash_operation_status(false);
+            return -1;
+        }
+    }
+
     p_cmd_address[0] = FLASH_PP;
     p_cmd_address[1] = (uint8_t)(flash_address >> 16);
     p_cmd_address[2] = (uint8_t)(flash_address >> 8);
@@ -664,8 +705,25 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
     if (memcmp((uint8_t *)cmd_address_data, data, len) != 0)
     {
         printf("flash_write_in_page 0x%08x failed!\r\n", flash_address);
+        
+        // 释放SPI总线互斥锁
+        if (flash_spi_mutex != NULL) {
+            xSemaphoreGive(flash_spi_mutex);
+        }
+        
+        // 清除Flash操作状态
+        set_flash_operation_status(false);
+        
         return -3;
     }
+
+    // 释放SPI总线互斥锁
+    if (flash_spi_mutex != NULL) {
+        xSemaphoreGive(flash_spi_mutex);
+    }
+
+    // 清除Flash操作状态
+    set_flash_operation_status(false);
 
     return 0;
 }
@@ -946,6 +1004,15 @@ int32_t is25pl032_flash_init(void)
 
     log_context_index = -1;
     dev_cfg_index = -1;
+    
+    // 创建SPI总线互斥信号量
+    if (flash_spi_mutex == NULL) {
+        flash_spi_mutex = xSemaphoreCreateMutex();
+        if (flash_spi_mutex == NULL) {
+            printf("Failed to create flash SPI mutex!\r\n");
+            return -1;
+        }
+    }
 
     printf("FLASH ID: 0x%x\r\n", is25pl032_flash_read_id());
 

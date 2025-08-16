@@ -24,10 +24,14 @@ extern void adxl357_task(void* p);
 
 extern float g_norm;
 
-void Reset_Vibration_Stats(void);
-void adxl357_get_adc_data(float* x, float* y, float* z);
-void adxl357_get_adc_raw_data(float* x, float* y, float* z);
+/* 函数声明 */
+void adxl357_task(void* p);
 void adxl357_get_adc_norm(float* norm);
+void Get_Vibration_Data(void);
+void Reset_Vibration_Stats(void);
+
+/* 新增：Flash操作状态管理 */
+void set_flash_operation_status(bool in_progress);
 
 #endif /* __ADXL357_H__ */
 

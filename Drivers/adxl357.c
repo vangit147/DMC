@@ -65,6 +65,36 @@ adxl357_vibration_data_t vibration_data;
 // RMS计算相关的静态变量（用于日志统计）
 static float sum_squared = 0.0f;  // 用于RMS计算的平方和
 static uint32_t rms_count = 0;    // 用于RMS计算的数据点计数
+
+/* 新增：Flash操作检测和延迟机制 */
+static bool flash_operation_in_progress = false;
+static SemaphoreHandle_t adxl357_flash_mutex = NULL;
+
+/**
+ * @brief 设置Flash操作状态
+ * @param in_progress 是否正在进行Flash操作
+ */
+void set_flash_operation_status(bool in_progress)
+{
+    flash_operation_in_progress = in_progress;
+}
+
+/**
+ * @brief 检查是否可以执行ADXL357操作
+ * @return true-可以执行，false-需要等待
+ */
+static bool can_execute_adxl357_operation(void)
+{
+    if (flash_operation_in_progress) {
+        return false;
+    }
+    
+    if (adxl357_flash_mutex != NULL) {
+        return (xSemaphoreTake(adxl357_flash_mutex, 0) == pdTRUE);
+    }
+    
+    return true;
+}
 /******************************** Functions **********************************/
 void adxl357_get_adc_norm(float* norm)
 {
@@ -225,7 +255,7 @@ static int32_t adxl357_init(void)
     printf("ADX1357 INT_MAP register: 0x%02x\r\n", adxl357_read_reg(REG_INT_MAP));
     vTaskDelay(10);
     adxl357_write_reg(0x28, ADXL357_FREQUENCY_1MS);
-    printf("ADX1357 FREQUENCY: 1ms\r\n");
+    printf("ADXL357_FREQUENCY_1MS\r\n");
     vTaskDelay(10);
 
     adxl357_start(1);
@@ -273,6 +303,12 @@ void adxl357_task(void* p)
 {
     adxl357_init();
     Reset_Vibration_Stats();
+    
+    // 创建ADXL357与Flash操作的互斥信号量
+    adxl357_flash_mutex = xSemaphoreCreateMutex();
+    if (adxl357_flash_mutex == NULL) {
+        printf("Failed to create ADXL357-Flash mutex!\r\n");
+    }
 
     for(;;)
     {
@@ -281,8 +317,19 @@ void adxl357_task(void* p)
 
         if(notify & EVENT_ADXL357_DATA_READY)
         {
-            on_adxl357_data_ready_event();
-            Get_Vibration_Data();
+            // 检查是否可以执行ADXL357操作
+            if (can_execute_adxl357_operation()) {
+                on_adxl357_data_ready_event();
+                Get_Vibration_Data();
+                
+                // 释放互斥信号量
+                if (adxl357_flash_mutex != NULL) {
+                    xSemaphoreGive(adxl357_flash_mutex);
+                }
+            } else {
+                // 如果Flash操作正在进行，延迟执行
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
         }
     }
 }
