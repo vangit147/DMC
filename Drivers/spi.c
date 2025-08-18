@@ -21,7 +21,7 @@ void LPSPI0_IRQHandler(void);
 void LPSPI1_IRQHandler(void);
 void LPSPI2_IRQHandler(void);
 
-//static SemaphoreHandle_t spi0_available_sem; // SPI0空闲
+static SemaphoreHandle_t spi0_available_sem; // SPI0空闲
 
 static GPIO_Type *spi0_cs0_port;
 static pins_channel_type_t spi0_cs0_pin;
@@ -119,9 +119,8 @@ static void spi2_callback(void *driverState, spi_event_t event, void *userData)
   */
 int32_t spi0_cs0_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t len)
 {
-// #if 1
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
-    xSemaphoreTake(spi0_cs0_available_sem, portMAX_DELAY);
+#if 1
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
     spi0_cs0_send_buff = send_buff;
     spi0_cs0_receive_buff = receive_buff;
@@ -130,18 +129,17 @@ int32_t spi0_cs0_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t le
     xTaskGenericNotify(spi0_drv_task_handle, SPI0_CS0_TRANSFER_EVENT, eSetBits, NULL);
     xSemaphoreTake(spi0_cs0_transfer_end_sem, portMAX_DELAY);
 
-    xSemaphoreGive(spi0_cs0_available_sem);
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
-// #if 0
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
+    xSemaphoreGive(spi0_available_sem);
+#endif
+#if 0
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
-//     PINS_DRV_WritePin(spi0_cs0_port, spi0_cs0_pin, 0);
-//     LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
-//     PINS_DRV_WritePin(spi0_cs0_port, spi0_cs0_pin, 1);
+    PINS_DRV_WritePin(spi0_cs0_port, spi0_cs0_pin, 0);
+    LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
+    PINS_DRV_WritePin(spi0_cs0_port, spi0_cs0_pin, 1);
 
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
+    xSemaphoreGive(spi0_available_sem);
+#endif
     return 0;
 }
 /**
@@ -157,9 +155,8 @@ int32_t spi0_cs0_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t le
   */
 int32_t spi0_cs1_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t len)
 {
-// #if 1
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
-    xSemaphoreTake(spi0_cs1_available_sem, portMAX_DELAY);
+#if 1
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
     spi0_cs1_send_buff = send_buff;
     spi0_cs1_receive_buff = receive_buff;
@@ -168,19 +165,18 @@ int32_t spi0_cs1_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t le
     xTaskGenericNotify(spi0_drv_task_handle, SPI0_CS1_TRANSFER_EVENT, eSetBits, NULL);
     xSemaphoreTake(spi0_cs1_transfer_end_sem, portMAX_DELAY);
 
-    xSemaphoreGive(spi0_cs1_available_sem);
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
+    xSemaphoreGive(spi0_available_sem);
+#endif
 
-// #if 0
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
+#if 0
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
-//     PINS_DRV_WritePin(spi0_cs1_port, spi0_cs1_pin, 0);
-//     LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
-//     PINS_DRV_WritePin(spi0_cs1_port, spi0_cs1_pin, 1);
+    PINS_DRV_WritePin(spi0_cs1_port, spi0_cs1_pin, 0);
+    LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
+    PINS_DRV_WritePin(spi0_cs1_port, spi0_cs1_pin, 1);
 
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
+    xSemaphoreGive(spi0_available_sem);
+#endif
     return 0;
 }
 
@@ -197,9 +193,8 @@ int32_t spi0_cs1_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t le
   */
 int32_t spi0_cs2_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t len)
 {
-// #if 1
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
-    xSemaphoreTake(spi0_cs2_available_sem, portMAX_DELAY);
+#if 1
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
     spi0_cs2_send_buff = send_buff;
     spi0_cs2_receive_buff = receive_buff;
@@ -208,19 +203,17 @@ int32_t spi0_cs2_transfer(uint8_t *send_buff, uint8_t *receive_buff, uint32_t le
     xTaskGenericNotify(spi0_drv_task_handle, SPI0_CS2_TRANSFER_EVENT, eSetBits, NULL);
     xSemaphoreTake(spi0_cs2_transfer_end_sem, portMAX_DELAY);
 
-    xSemaphoreGive(spi0_cs2_available_sem);
+    xSemaphoreGive(spi0_available_sem);
+#endif
+#if 0
+    xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
 
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
-// #if 0
-//     xSemaphoreTake(spi0_available_sem, portMAX_DELAY);
+    PINS_DRV_WritePin(spi0_cs2_port, spi0_cs2_pin, 0);
+    LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
+    PINS_DRV_WritePin(spi0_cs2_port, spi0_cs2_pin, 1);
 
-//     PINS_DRV_WritePin(spi0_cs2_port, spi0_cs2_pin, 0);
-//     LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
-//     PINS_DRV_WritePin(spi0_cs2_port, spi0_cs2_pin, 1);
-
-//     xSemaphoreGive(spi0_available_sem);
-// #endif
+    xSemaphoreGive(spi0_available_sem);
+#endif
     return 0;
 }
 
@@ -240,7 +233,7 @@ static void on_spi0_transfer_event(uint8_t *send_buff, uint8_t *receive_buff, ui
 {
     // DISABLE_ADS1278_IRQ;
     PINS_DRV_WritePin(port, pin, 0);
-    LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 10);
+    LPSPI_DRV_MasterTransferBlocking(LPSPICOM0, send_buff, receive_buff, len, 200);
     PINS_DRV_WritePin(port, pin, 1);
     // ENABLE_ADS1278_IRQ;
 
@@ -299,8 +292,8 @@ int32_t spi0_init(void)
 {
     BaseType_t ret;
 
-    // spi0_available_sem = xSemaphoreCreateBinary();
-    // xSemaphoreGive(spi0_available_sem);
+    spi0_available_sem = xSemaphoreCreateBinary();
+    xSemaphoreGive(spi0_available_sem);
     spi0_cs0_available_sem = xSemaphoreCreateBinary();
     xSemaphoreGive(spi0_cs0_available_sem);
     spi0_cs1_available_sem = xSemaphoreCreateBinary();
