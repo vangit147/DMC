@@ -22,69 +22,6 @@ extern "C"
 #include "main.h"
 #include "cpu.h"
 
-/* 新增：Flash操作相关定义 */
-
-/**
- *******************************************************************************
- * @Description: Flash操作队列长度定义
- * @Note       : 用于Flash操作任务队列的最大长度
- *******************************************************************************
- */
-#define FLASH_OPERATION_QUEUE_LENGTH 10
-
-/**
- *******************************************************************************
- * @Description: Flash操作超时时间定义
- * @Note       : Flash操作的最大超时时间（毫秒）
- *******************************************************************************
- */
-#define FLASH_OPERATION_TIMEOUT_MS 5000
-
-/**
- *******************************************************************************
- * @Description: Flash操作类型枚举
- * @Note       : 定义Flash支持的操作类型
- *******************************************************************************
- */
-typedef enum {
-    FLASH_OP_ERASE_SECTOR,    // 扇区擦除操作
-    FLASH_OP_WRITE_PAGE,      // 页写入操作
-    FLASH_OP_READ_DATA,       // 数据读取操作
-    FLASH_OP_VERIFY_DATA      // 数据验证操作
-} flash_operation_type_t;
-
-/**
- *******************************************************************************
- * @Description: Flash操作请求结构体
- * @Note       : 用于Flash操作任务的请求参数
- *******************************************************************************
- */
-typedef struct {
-    flash_operation_type_t op_type;     // 操作类型
-    uint32_t address;                   // 操作地址
-    uint8_t *data;                      // 数据指针
-    uint32_t length;                    // 数据长度
-    uint32_t check_empty;               // 是否检查空状态
-    SemaphoreHandle_t completion_sem;   // 完成信号量
-    int32_t result;                     // 操作结果
-} flash_operation_request_t;
-
-/**
- *******************************************************************************
- * @Description: Flash统计信息结构体
- * @Note       : 用于记录Flash操作的统计信息
- *******************************************************************************
- */
-typedef struct {
-    uint32_t total_erase_attempts;      // 总擦除尝试次数
-    uint32_t successful_erases;         // 成功擦除次数
-    uint32_t failed_erases;             // 失败擦除次数
-    uint32_t bad_blocks_detected;       // 检测到的坏块数量
-    uint32_t last_bad_block_address;    // 最后一个坏块地址
-    bool flash_health_warning;          // Flash健康警告标志
-    float success_rate;                 // 成功率
-} flash_stats_info_t;
-
 #define LOG_FLAG_VIBRATING 0X1              // 震动标志
 #define LOG_FLAG_VIBRATING_FOR_ADXL357 0X10 // ADXL357震动标志
 
@@ -814,11 +751,6 @@ typedef struct {
      *******************************************************************************
      */
     uint32_t is25pl032_flash_get_rms_trigger_ratio(void);
-
-        /* Flash操作函数声明 */
-    int32_t is25pl032_flash_erase_sector_smart(uint32_t address, uint32_t check_empty);
-    const flash_stats_info_t* get_flash_stats(void);
-    void print_flash_health_report(void);
 
 #ifdef __cplusplus
 }
