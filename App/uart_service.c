@@ -365,16 +365,13 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);  // 振动标志
 
         // 插入ADXL357三轴原始数据（12字节）
-        float adxl_x_2, adxl_y_2, adxl_z_2;
-        adxl357_get_adc_raw_data(&adxl_x_2, &adxl_y_2, &adxl_z_2);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_x_2, 4);  // X轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_y_2, 4);  // Y轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_z_2, 4);  // Z轴原始加速度数据
+        // 直接使用vibration_data结构体中的数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_x_raw, 4);  // X轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_y_raw, 4);  // Y轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_z_raw, 4);  // Z轴原始加速度数据
 
         // 当前加速度模长（4字节）
-        float acc_norm;
-        adxl357_get_adc_norm(&acc_norm);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm, 4);           // 当前加速度模长
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_magnitude, 4);  // 当前加速度模长
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&temp, 4);
@@ -462,7 +459,7 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
 
-        sendLength = 178;
+        sendLength = 194;
         output_buffer[3] = sendLength >> 16 & 0xff;
         output_buffer[4] = sendLength & 0xff;
 
@@ -522,6 +519,10 @@ void send_msg(void)
         // p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.c2_num_min, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.max_peace_time_max, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.peace_time_count, 2);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_delta_count_total, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_rms_over_count_total, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_delta_max, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.vibration_rms_current, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.s_f32_36V, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.hs, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.flag, 4);
@@ -529,7 +530,7 @@ void send_msg(void)
         *p_uint8++ = 0x02;
         *p_uint8++ = 0x55;
 
-        send_data_to_vd_tool(output_buffer, 45);
+        send_data_to_vd_tool(output_buffer, 61);
         isSend = 0;
         goto ok;
     }
@@ -1254,16 +1255,12 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_flag_float, 4);      // 振动标志：低4位=GPIO振动，高4位=ADXL357振动
 
         // ===== ADXL357三轴原始数据（12字节）=====
-        float adxl_x_2, adxl_y_2, adxl_z_2;
-        adxl357_get_adc_raw_data(&adxl_x_2, &adxl_y_2, &adxl_z_2);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_x_2, 4);  // X轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_y_2, 4);  // Y轴原始加速度数据
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&adxl_z_2, 4);  // Z轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_x_raw, 4);  // X轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_y_raw, 4);  // Y轴原始加速度数据
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_z_raw, 4);  // Z轴原始加速度数据
 
         // ===== 加速度模长数据（4字节）=====
-        float acc_norm;
-        adxl357_get_adc_norm(&acc_norm);
-        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&acc_norm, 4);           // 当前加速度模长
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_data.acc_magnitude, 4);  // 当前加速度模长
 
         // ===== 数据包尾部（3字节）=====
         *p_uint8++ = 0x54;  // 数据结束标识

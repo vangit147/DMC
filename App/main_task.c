@@ -377,6 +377,7 @@ static void on_100ms_timer_event(void)
     static uint32_t rtc_timeout = 0;
     static uint32_t last_timestamp = 0;
     static uint32_t log_period = 5;
+    // static uint32_t interrupt_test_counter = 0; // 添加中断测试计数器
     uint32_t timestamp;
     uint8_t rtc_data[8];
     struct tm time_data;
@@ -403,6 +404,25 @@ static void on_100ms_timer_event(void)
     // 静态数据收集（以100ms为单位，每100ms调用一次）
     uint8_t is_static_state = (get_vibrating_flag() == 0) ? 1 : 0; // 静止状态
     mud_pulse_collect_static_data(&mud_pulse, is_static_state);
+
+    // 中断控制功能测试 - 每10秒交替关闭/打开中断（100次100ms定时器）
+    // interrupt_test_counter++;
+    // if (interrupt_test_counter >= 100) // 10秒 = 100 * 100ms
+    // {
+    //     interrupt_test_counter = 0;
+    //     static bool interrupts_enabled = true; // 跟踪当前中断状态
+    //     if (interrupts_enabled) {
+    //         // 关闭中断
+    //         printf("=== DISABLING sensor interrupts (PTE1: ADXL357, PTE5: IAM20680HT) ===\r\n");
+    //         flash_control_sensor_interrupts(false);
+    //         interrupts_enabled = false;
+    //     } else {
+    //         // 打开中断
+    //         printf("=== ENABLING sensor interrupts (PTE1: ADXL357, PTE5: IAM20680HT) ===\r\n");
+    //         flash_control_sensor_interrupts(true);
+    //         interrupts_enabled = true;
+    //     }
+    // }
 
     // 每秒更新一次数据
     rtc_timeout++;
@@ -499,15 +519,15 @@ static void on_100ms_timer_event(void)
             log.vibration_data_avg = vibration_data.avg_vibration;
 
             // 完善调试信息打印：包含所有ADXL357振动检测相关数据
-//            printf("ADXL357_DEBUG: min=%.3f, max=%.3f, avg=%.3f, delta_count=%d, rms_over_count=%d, current_rms=%.3f, max_delta=%.3f, log_flag=0x%02X\r\n",
-//                   vibration_data.min_vibration,
-//                   vibration_data.max_vibration,
-//                   vibration_data.avg_vibration,
-//                   vibration_data.delta_count_total,
-//                   vibration_data.rms_over_count_total,
-//                   vibration_data.current_rms_value,
-//                   vibration_data.max_delta_value_in_period,
-//                   log.flag);
+            // printf("ADXL357_DEBUG: min=%.3f, max=%.3f, avg=%.3f, delta_count=%d, rms_over_count=%d, current_rms=%.3f, max_delta=%.3f, log_flag=0x%02X\r\n",
+            //        vibration_data.min_vibration,
+            //        vibration_data.max_vibration,
+            //        vibration_data.avg_vibration,
+            //        vibration_data.delta_count_total,
+            //        vibration_data.rms_over_count_total,
+            //        vibration_data.current_rms_value,
+            //        vibration_data.max_delta_value_in_period,
+            //        log.flag);
 
             Reset_Vibration_Stats();
 
@@ -537,6 +557,7 @@ static void on_100ms_timer_event(void)
 
             sum_roll = 0;
 
+            // 写入日志到Flash，返回值：0-成功，-1-日志写入失败，-2-日志上下文更新失败，-3-FLASH_INITED_FLAG恢复失败
             if ((ret = is25pl032_flash_write_one_log(&log)) != 0)
                 printf("Writing ONE log failed! ret=%d\r\n", ret);
         }

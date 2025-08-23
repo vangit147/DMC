@@ -22,64 +22,87 @@ extern "C"
 #include "main.h"
 #include "cpu.h"
 
-#define LOG_FLAG_VIBRATING 0X1              // 震动标志
-#define LOG_FLAG_VIBRATING_FOR_ADXL357 0X10 // ADXL357震动标志
-
+    /**
+     * @brief 日志数据结构体 (总大小: 178字节)
+     * @note 使用__packed属性确保结构体紧凑排列，无填充字节
+     * @details 包含传感器数据、倾角信息、振动检测数据、计数器等完整信息
+     */
     typedef __packed struct _log_
     {
-        uint32_t timestamp;         // 时间戳
-        uint32_t reserved0;         // 保留字段0
-        float ax;                   // X轴加速度
-        float ay;                   // Y轴加速度
-        float az;                   // Z轴加速度
-        float gx;                   // X轴角速度
-        float gy;                   // Y轴角速度
-        float gz;                   // Z轴角速度
-        float inc1_max;             // 倾角1最大值
-        float inc1_min;             // 倾角1最小值
-        float inc1_avg;             // 倾角1平均值
-        float inc2_max;             // 倾角2最大值
-        float inc2_min;             // 倾角2最小值
-        float inc2_avg;             // 倾角2平均值
-        float virtual_x_radius_min; // 虚拟X半径最小值
-        float virtual_x_radius_max; // 虚拟X半径最大值
-        float virtual_y_radius_min; // 虚拟Y半径最小值
-        float virtual_y_radius_max; // 虚拟Y半径最大值
-        float inc6_min;             // 倾角6最小值
-        float inc6_max;             // 倾角6最大值
-        float inc6_avg;             // 倾角6平均值
-        float hs;                   // 高边
-        float gz_max;               // Z轴角速度最大值
-        float gz_min;               // Z轴角速度最小值
-        float gz_avg;               // Z轴角速度平均值
-        float temp;                 // 温度
-        float roll;                 // 日志间隔内转速（没有使用）
-        uint32_t diff_t;            // 时间差
-        float virtual_x_radius_avg; // 虚拟X半径平均值（没有使用）
-        float virtual_y_radius_avg; // 虚拟Y半径平均值（没有使用）
-        float gz_dps_sdv_max;       // Z轴角速度标准差最大值
-        float gz_dps_sdv_min;       // Z轴角速度标准差最小值
-        float std_dev_ax_ay_max;    // XY轴加速度标准差之和的最大值
-        float vibration_data_min;   // 振动数据最小值
-        float vibration_data_max;   // 振动数据最大值
-        float vibration_data_avg;   // 振动数据平均值
-        uint32_t flag;             // 振动标志
-        uint32_t vibration_delta_count_total;     // 周期内总差值计数
-        uint32_t vibration_rms_over_count_total;  // 周期内总RMS超过次数
-        float vibration_rms_current;              // 当前RMS值
-        float vibration_delta_max;                // 周期内差值最大值
-        int c0_num_max;            // 计数器0最大值
-        int c0_num_min;            // 计数器0最小值
-        int c1_num_max;            // 计数器1最大值
-        int c1_num_min;            // 计数器1最小值
-        int c2_num_max;            // 计数器2最大值
-        int c2_num_min;            // 计数器2最小值
-        float max_peace_time_max;  // 最大平静时间最大值
-        float max_peace_time_min;  // 最大平静时间最小值
-        uint16_t peace_time_count; // 满足条件的次数
-        float s_f32_36V;           // 电池电压值
-        int16_t reserved1[1];      // 保留字段1
-        uint16_t crc16;            // CRC16校验值
+        /* 基础信息 (8字节) */
+        uint32_t timestamp;         // 4字节 - 时间戳
+        uint32_t reserved0;         // 4字节 - 保留字段0
+
+        /* 传感器数据 (24字节) */
+        float ax;                   // 4字节 - X轴加速度
+        float ay;                   // 4字节 - Y轴加速度
+        float az;                   // 4字节 - Z轴加速度
+        float gx;                   // 4字节 - X轴角速度
+        float gy;                   // 4字节 - Y轴角速度
+        float gz;                   // 4字节 - Z轴角速度
+
+        /* 倾角数据 (36字节) */
+        float inc1_max;             // 4字节 - 倾角1最大值
+        float inc1_min;             // 4字节 - 倾角1最小值
+        float inc1_avg;             // 4字节 - 倾角1平均值
+        float inc2_max;             // 4字节 - 倾角2最大值
+        float inc2_min;             // 4字节 - 倾角2最小值
+        float inc2_avg;             // 4字节 - 倾角2平均值
+        float inc6_min;             // 4字节 - 倾角6最小值
+        float inc6_max;             // 4字节 - 倾角6最大值
+        float inc6_avg;             // 4字节 - 倾角6平均值
+
+        /* 虚拟半径数据 (16字节) */
+        float virtual_x_radius_min; // 4字节 - 虚拟X半径最小值
+        float virtual_x_radius_max; // 4字节 - 虚拟X半径最大值
+        float virtual_y_radius_min; // 4字节 - 虚拟Y半径最小值
+        float virtual_y_radius_max; // 4字节 - 虚拟Y半径最大值
+
+        /* 系统状态数据 (20字节) */
+        float hs;                   // 4字节 - 高边
+        float gz_max;               // 4字节 - Z轴角速度最大值
+        float gz_min;               // 4字节 - Z轴角速度最小值
+        float gz_avg;               // 4字节 - Z轴角速度平均值
+        float temp;                 // 4字节 - 温度
+
+        /* 时间相关数据 (8字节) */
+        float roll;                 // 4字节 - 日志间隔内转速（没有使用）
+        uint32_t diff_t;            // 4字节 - 时间差
+
+        /* 统计计算数据 (20字节) */
+        float virtual_x_radius_avg; // 4字节 - 虚拟X半径平均值（没有使用）
+        float virtual_y_radius_avg; // 4字节 - 虚拟Y半径平均值（没有使用）
+        float gz_dps_sdv_max;       // 4字节 - Z轴角速度标准差最大值
+        float gz_dps_sdv_min;       // 4字节 - Z轴角速度标准差最小值
+        float std_dev_ax_ay_max;    // 4字节 - XY轴加速度标准差之和的最大值
+
+        /* 振动检测数据 (28字节) */
+        float vibration_data_min;   // 4字节 - 振动数据最小值
+        float vibration_data_max;   // 4字节 - 振动数据最大值
+        float vibration_data_avg;   // 4字节 - 振动数据平均值
+        uint32_t flag;              // 4字节 - 振动标志
+        uint32_t vibration_delta_count_total;     // 4字节 - 周期内总差值计数
+        uint32_t vibration_rms_over_count_total;  // 4字节 - 周期内总RMS超过次数
+        float vibration_rms_current;              // 4字节 - 当前RMS值
+        float vibration_delta_max;                // 4字节 - 周期内差值最大值
+
+        /* 计数器数据 (24字节) */
+        int c0_num_max;             // 4字节 - 计数器0最大值
+        int c0_num_min;             // 4字节 - 计数器0最小值
+        int c1_num_max;             // 4字节 - 计数器1最大值
+        int c1_num_min;             // 4字节 - 计数器1最小值
+        int c2_num_max;             // 4字节 - 计数器2最大值
+        int c2_num_min;             // 4字节 - 计数器2最小值
+
+        /* 平静时间数据 (10字节) */
+        float max_peace_time_max;   // 4字节 - 最大平静时间最大值
+        float max_peace_time_min;   // 4字节 - 最大平静时间最小值
+        uint16_t peace_time_count;  // 2字节 - 满足条件的次数
+
+        /* 电源和校验数据 (8字节) */
+        float s_f32_36V;            // 4字节 - 电池电压值
+        int16_t reserved1[1];       // 2字节 - 保留字段1
+        uint16_t crc16;             // 2字节 - CRC16校验值
     } log_t;
 
     /******************************** Functions **********************************/
@@ -751,6 +774,17 @@ extern "C"
      *******************************************************************************
      */
     uint32_t is25pl032_flash_get_rms_trigger_ratio(void);
+
+    /**
+     *******************************************************************************
+     * @Description: Flash操作时的中断控制函数
+     * @Parameters : enable - true启用中断，false禁用中断
+     * @RetValue   : 无
+     * @Note       : 在Flash操作前禁用传感器中断，操作后重新启用
+     *               控制ADXL357(PTE1)和IAM20680HT(PTE5)的中断状态
+     *******************************************************************************
+     */
+    void flash_control_sensor_interrupts(bool enable);
 
 #ifdef __cplusplus
 }

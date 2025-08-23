@@ -26,17 +26,17 @@
 static uint64_t flash_temp_buffer[512]; // 4K读写缓冲区
 
 /*
-FLASH 数据区定义
+FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
 +--------------------------+
-|       FLASH_INIT   (4K)  |
+|       FLASH_INIT   (4K)  | 0x00000000 - 0x00000FFF
 +--------------------------+
-|       DEV_CFG      (4K)  |
+|       DEV_CFG      (4K)  | 0x00001000 - 0x00001FFF
 +--------------------------+
-|     TOTAL_RUN_TIME (8K)  |
+|     TOTAL_RUN_TIME (8K)  | 0x00002000 - 0x00003FFF
 +--------------------------+
-|     LOG CONTEXT    (8K)  |
+|     LOG CONTEXT    (8K)  | 0x00004000 - 0x00005FFF
 +--------------------------+
-|          LOG             |
+|          LOG             | 0x00006000 - 0x3FFFFFFF (约23,425条日志，每条178字节)
 +--------------------------+
 
 */
@@ -365,6 +365,7 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 
         rd_index = log_context.log_write_index + 1 - log_context.log_to_be_read_count;
         log_context.log_to_be_read_count--;
+        // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约23,425条日志)
         if (rd_index < 0)
             rd_index += LOG_FLASH_SIZE / sizeof(log_t);
         flash_address += sizeof(log_t) * rd_index;
@@ -400,10 +401,42 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 }
 /**
   *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
+  * @Description: 写入一条日志到Flash存储器
+  * @Parameters : log - 指向要写入的日志数据结构的指针
+  * @RetValue   : 0-成功，-1-日志写入失败，-2-日志上下文更新失败，-3-FLASH_INITED_FLAG恢复失败
+  * @Note       : 该函数会将日志数据写入Flash，更新日志上下文信息，并确保Flash初始化标志正确
+  *               如果任何步骤失败，会进行最多3次重试。日志数据采用循环缓冲区存储方式。
+  *
+  *               Flash存储布局说明：
+  *               +--------------------------+
+  *               |       FLASH_INIT   (4K)  | 0x00000000 - 0x00000FFF
+  *               +--------------------------+
+  *               |       DEV_CFG      (4K)  | 0x00001000 - 0x00001FFF
+  *               +--------------------------+
+  *               |     TOTAL_RUN_TIME (8K)  | 0x00002000 - 0x00003FFF
+  *               +--------------------------+
+  *               |     LOG CONTEXT    (8K)  | 0x00004000 - 0x00005FFF
+  *               +--------------------------+
+  *               |          LOG             | 0x00006000 - 0x3FFFFFFF
+  *               +--------------------------+
+  *
+   *               关键范围值含义：
+ *               - LOG_FLASH_ADDRESS: 0x00006000 (日志数据起始地址)
+ *               - LOG_FLASH_SIZE: 0x3FA00000 (4,169,728字节，实际日志存储空间)
+ *               - LOG_FLASH_SIZE / sizeof(log_t): 约23,425条日志记录 (每条日志178字节)
+ *               - 日志结构体详细组成：
+ *                 * 基础信息: 8字节 (时间戳、保留字段)
+ *                 * 传感器数据: 24字节 (三轴加速度、三轴角速度)
+ *                 * 倾角数据: 36字节 (倾角1/2/6的最大/最小/平均值)
+ *                 * 虚拟半径数据: 16字节 (X/Y半径最小/最大值)
+ *                 * 系统状态数据: 20字节 (高边、Z轴角速度统计、温度)
+ *                 * 时间相关数据: 8字节 (转速、时间差)
+ *                 * 统计计算数据: 20字节 (标准差、平均值等)
+ *                 * 振动检测数据: 28字节 (振动统计、标志、计数)
+ *                 * 计数器数据: 24字节 (3个计数器的最大/最小值)
+ *                 * 平静时间数据: 10字节 (平静时间统计)
+ *                 * 电源和校验数据: 8字节 (电池电压、CRC16)
+ *               - 日志采用循环缓冲区，当写满后覆盖最早的记录
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 19:56:44 Wednesday
@@ -414,6 +447,12 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
     int32_t i;
     uint32_t init_flag;
     int32_t ret = 0;
+
+    // Flash操作前禁用传感器中断
+    flash_control_sensor_interrupts(false);
+
+    // 增加延时确保中断完全禁用
+    vTaskDelay(1);
 
     log->crc16 = CRC16(log, sizeof(log_t) - 2);
     for (i = 0; i < 3; i++)
@@ -435,10 +474,15 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
     }
 
     if (i == 3)
+    {
+        // Flash操作后重新启用传感器中断
+        flash_control_sensor_interrupts(true);
         return -1;
+    }
 
     // 成功写入一条log
     log_context.log_total_count++;
+    // 限制总日志数量不超过最大容量 (约23,425条)
     if (log_context.log_total_count > LOG_FLASH_SIZE / sizeof(log_t))
         log_context.log_total_count = LOG_FLASH_SIZE / sizeof(log_t);
     log_context.log_to_be_read_count++;
@@ -465,7 +509,11 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
             break;
     }
     if (i == 3)
+    {
+        // Flash操作后重新启用传感器中断
+        flash_control_sensor_interrupts(true);
         return -2;
+    }
 
     // 检查并恢复FLASH_INITED_FLAG的值
     for (i = 0; i < 3; i++)
@@ -500,7 +548,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         }
         else
         {
-            printf("FLASH_INITED_FLAG is correct (0x%08X)\r\n", init_flag);
+//            printf("FLASH_INITED_FLAG is correct (0x%08X)\r\n", init_flag);
             break;
         }
     }
@@ -508,9 +556,13 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
     if (i == 3)
     {
         printf("Failed to restore FLASH_INITED_FLAG after 3 attempts\r\n");
+        // Flash操作后重新启用传感器中断
+        flash_control_sensor_interrupts(true);
         return -3;
     }
 
+    // Flash操作后重新启用传感器中断
+    flash_control_sensor_interrupts(true);
     return 0;
 }
 /**
@@ -663,7 +715,7 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
     is25pl032_flash_normal_read(flash_address, (uint8_t *)cmd_address_data, len);
     if (memcmp((uint8_t *)cmd_address_data, data, len) != 0)
     {
-        printf("flash_write_in_page 0x%08x failed!\r\n", flash_address);
+        printf("flash_write_in_page 0x%08x failed! Data mismatch\r\n", flash_address);
         return -3;
     }
 
@@ -2076,4 +2128,35 @@ uint32_t is25pl032_flash_get_rms_trigger_ratio(void)
     if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
         return DEFAULT_RMS_TRIGGER_RATIO; // 默认70%
     return dev_cfg.u_cfg.cfg.vibration_cfg.rms_trigger_ratio;
+}
+
+/**
+  *******************************************************************************
+  * @Description: Flash操作时的中断控制函数
+  * @Parameters : enable - true启用中断，false禁用中断
+  * @RetValue   : 无
+  * @Note       : 在Flash操作前禁用传感器中断，操作后重新启用
+  * @CreatedBy  : Assistant
+  * @CreatedDate: 2025.01.27
+  *******************************************************************************
+  */
+void flash_control_sensor_interrupts(bool enable)
+{
+    if(enable) {
+        // 重新启用传感器中断
+        // printf("Flash: Re-enabling sensor interrupts...\r\n");
+        PINS_DRV_SetPinIntSel(PORTE, 1, PORT_INT_FALLING_EDGE);  // PTE1 - ADXL357
+        PINS_DRV_SetPinIntSel(PORTE, 5, PORT_INT_FALLING_EDGE);  // PTE5 - IAM20680HT
+
+        // 重新配置ADXL357中断，确保中断正常工作
+        adxl357_reconfigure_interrupts();
+
+        // printf("Flash: Sensor interrupts re-enabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
+    } else {
+        // 禁用传感器中断
+        // printf("Flash: Disabling sensor interrupts for Flash operation...\r\n");
+        PINS_DRV_SetPinIntSel(PORTE, 1, PORT_DMA_INT_DISABLED);  // PTE1 - ADXL357
+        PINS_DRV_SetPinIntSel(PORTE, 5, PORT_DMA_INT_DISABLED);  // PTE5 - IAM20680HT
+        // printf("Flash: Sensor interrupts disabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
+    }
 }

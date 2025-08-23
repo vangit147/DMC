@@ -16,7 +16,6 @@
 
 #define EVENT_VIBRATION_TIMER    0X40000000
 vibration_detector_t vibration_detector;
-vibration_sensor_data_t adxl357_sensor_data;  // 当前传感器数据
 static uint8_t s_u8_adxl357_vibrating_flag = 0;
 static uint8_t s_u8_gpio_vibrating_flag = 0;  // GPIO振动检测标志
 TaskHandle_t vibration_monitor_task_handle;
@@ -101,7 +100,7 @@ uint32_t get_vibrating_flag(void)
  * @RetValue   : 无
  * @Note       : 初始化滑动窗口的所有成员变量
  *               设置初始状态，为滑动窗口机制做准备
- *               使用分段存储方式实现8秒响应时间
+ *               使用分段存储方式实现8秒响应时间，每段200个数据点，共40段
  *******************************************************************************
  */
 void vibration_sliding_window_init(vibration_sliding_window_t *window)
@@ -137,7 +136,7 @@ void vibration_sliding_window_init(vibration_sliding_window_t *window)
  * @RetValue   : 无
  * @Note       : 更新滑动窗口数据，使用分段存储方式
  *               实现8秒滑动窗口的实时更新机制
- *               与GPIO振动开关响应时间保持一致：1600个数据点（约8秒）
+ *               基于ADXL357数据量：8000个数据点（约8秒）
  *******************************************************************************
  */
 void vibration_sliding_window_update(vibration_sliding_window_t *window,
@@ -214,7 +213,7 @@ void vibration_sliding_window_update(vibration_sliding_window_t *window,
  * @Note       : 基于滑动窗口数据进行振动检测判断
  *               使用双条件检测：频率检测（差值计数）+ 振幅检测（RMS）
  *               需要同时满足频率和振幅两个条件
- *               与GPIO振动开关响应时间保持一致：1600个数据点窗口（约8秒）
+ *               基于ADXL357数据量：8000个数据点窗口（约8秒）
  *               直接在函数内部设置振动状态
  *******************************************************************************
  */
@@ -230,7 +229,7 @@ void vibration_sliding_window_detect(vibration_sliding_window_t *window,
         return;
     }
 
-    // 条件1：频率检测 - 差值计数超过阈值（基于1600个数据点）
+    // 条件1：频率检测 - 差值计数超过阈值（基于8000个数据点）
     uint8_t delta_condition = 0;
     if (window->delta_count > (VIBRATION_SLIDING_WINDOW_SIZE * detector->config.delta_trigger_ratio) / 10) {
         detector->state.delta_flag = VIBRATION_FLAG_ENABLED;
@@ -239,7 +238,7 @@ void vibration_sliding_window_detect(vibration_sliding_window_t *window,
         detector->state.delta_flag = VIBRATION_FLAG_DISABLED;
     }
 
-    // 条件2：振幅检测 - RMS超过阈值（基于1600个数据点）
+    // 条件2：振幅检测 - RMS超过阈值（基于8000个数据点）
     uint8_t rms_condition = 0;
     if (window->rms_over_threshold_count >= (VIBRATION_SLIDING_WINDOW_SIZE * detector->config.rms_trigger_ratio) / 10) {
         detector->state.rms_flag = VIBRATION_FLAG_ENABLED;
@@ -309,53 +308,24 @@ void vibration_detector_load_config(vibration_detector_t *detector)
     detector->config.rms_trigger_ratio = is25pl032_flash_get_rms_trigger_ratio();     // RMS触发次数比例
 }
 
-/**
- *******************************************************************************
- * @Description: 振动检测器数据处理（滑动窗口机制）
- * @Parameters : detector - 振动检测器指针
- * @RetValue   : 无
- * @Note       : 处理ADXL357传感器数据，进行振动检测
- *               每5ms调用一次，使用8秒滑动窗口进行实时检测
- *               使用双条件检测：频率检测（差值计数）+ 振幅检测（RMS）
- *               频率检测：统计超过阈值的次数
- *               振幅检测：使用RMS值表示振动振幅
- *               与GPIO振动开关响应时间保持一致：1600个数据点窗口（约8秒）
- *               直接在滑动窗口检测函数中设置振动状态
- *******************************************************************************
- */
-void vibration_detector_process(vibration_detector_t *detector)
-{
-    if (!detector) {
-        return;
-    }
-
-    // ADXL357数据处理始终运行，无论选择哪种振动检测源
-    // 这样可以进行数据对比和分析，通过上位机查看两种检测方式的差异
-    adxl357_get_adc_data(&adxl357_sensor_data.x, &adxl357_sensor_data.y, &adxl357_sensor_data.z);
-
-    // 计算当前加速度模长
-    float current_value = sqrtf(adxl357_sensor_data.x * adxl357_sensor_data.x +
-                               adxl357_sensor_data.y * adxl357_sensor_data.y +
-                               adxl357_sensor_data.z * adxl357_sensor_data.z);
-
-    // 更新滑动窗口数据
-    vibration_sliding_window_update(&detector->sliding_window,
-                                  current_value,
-                                  detector->config.threshold,
-                                  detector->config.delta_threshold,
-                                  detector->config.rms_threshold);
-
-    // 基于滑动窗口进行振动检测
-    vibration_sliding_window_detect(&detector->sliding_window, detector);
-}
-
 // 定时器回调函数
 static void vibration_timer_cb(TimerHandle_t xTimer)
 {
     xTaskGenericNotify(vibration_monitor_task_handle, EVENT_VIBRATION_TIMER, eSetBits, NULL);
 }
 
-// 振动监控任务
+/**
+ *******************************************************************************
+ * @Description: 振动监控任务
+ * @Parameters : pvParameters - 任务参数（未使用）
+ * @RetValue   : 无
+ * @Note       : 振动检测已经在ADXL357中断中实现，此任务主要负责：
+ *               1. 初始化振动检测器
+ *               2. 定期更新配置参数（从Flash读取最新配置）
+ *               3. 根据检测结果更新全局振动标志
+ *               振动检测算法在ADXL357中断中直接处理，提高实时性
+ *******************************************************************************
+ */
 void VibrationMonitor_Task(void *pvParameters)
 {
     uint32_t notify;
@@ -363,8 +333,8 @@ void VibrationMonitor_Task(void *pvParameters)
     // 执行振动检测器完整初始化
     vibration_detector_init(&vibration_detector);
 
-    // 创建并立即启动定时器，减少启动延迟
-    TimerHandle_t vibration_timer = xTimerCreate("vibration_timer", VIBRATION_DETECTION_FREQUENCY, 1, 0, vibration_timer_cb);
+    // 创建并立即启动定时器，用于定期更新配置参数
+    TimerHandle_t vibration_timer = xTimerCreate("vibration_timer", VIBRATION_DETECTION_FREQUENCY_MS, 1, 0, vibration_timer_cb);
     xTimerStart(vibration_timer, 0); // 立即启动，不延迟
 
     for(;;)
@@ -375,8 +345,10 @@ void VibrationMonitor_Task(void *pvParameters)
         {
             // 重新读取配置参数，确保上位机修改后立即生效
             vibration_detector_load_config(&vibration_detector);
-            // 执行振动检测算法，处理传感器数据并更新检测结果
-            vibration_detector_process(&vibration_detector);
+
+            // 直接进行振动检测判断，基于ADXL357中断中更新的滑动窗口数据
+            vibration_sliding_window_detect(&vibration_detector.sliding_window, &vibration_detector);
+
             // 根据检测结果更新全局振动标志，供其他模块使用
             if(vibration_detector.state.is_triggered)
                 s_u8_adxl357_vibrating_flag = 1;  // 检测到振动，设置标志

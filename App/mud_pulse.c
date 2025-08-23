@@ -297,10 +297,6 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
     if (!pulse)
         return;
 
-    uint32_t index = 0;
-    float temp_voltage;
-    inclination_hs_t hs;
-
     __disable_irq(); // 开始关键数据更新，禁用中断
 
     // ===== 第二阶段：定时发送条件检查 =====
