@@ -1,45 +1,20 @@
 #ifndef __ADXL357_H__
 #define __ADXL357_H__
 
+// ============================================================================
+// 包含文件
+// ============================================================================
+#include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "main.h"
+#include <stdbool.h>
+
+// ============================================================================
+// 宏定义
+// ============================================================================
 
 // ADXL357振动标志宏定义
 #define LOG_FLAG_VIBRATING_FOR_ADXL357      0x10     // ADXL357振动标志
-
-typedef struct {
-    float avg_vibration;
-    float min_vibration;
-    float max_vibration;
-    float vibration;
-    uint32_t account;
-
-    // 新增：用于日志记录的ADXL357振动检测详细数据
-    uint32_t delta_count_total;     // 日志周期内总差值计数
-    uint32_t rms_over_count_total;  // 日志周期内总RMS超过次数
-    float current_rms_value;        // 当前RMS值
-    float max_delta_value_in_period; // 日志周期内差值最大值
-
-    // 新增：ADXL357三轴加速度数据
-    int32_t acc_x_raw;              // X轴加速度原始值（LSB单位）
-    int32_t acc_y_raw;              // Y轴加速度原始值（LSB单位）
-    int32_t acc_z_raw;              // Z轴加速度原始值（LSB单位）
-    float acc_magnitude;            // 三轴加速度模值（LSB单位）
-    float acc_x_g;                  // X轴重力加速度值（g单位）
-    float acc_y_g;                  // Y轴重力加速度值（g单位）
-    float acc_z_g;                  // Z轴重力加速度值（g单位）
-} adxl357_vibration_data_t;
-
-extern TaskHandle_t     adx357_task_handle;
-extern void adxl357_task(void* p);
-
-extern float g_norm;
-
-// ============================================================================
-// ADXL357 ODR配置值和对应的时间周期
-// 这些宏定义建立了ODR寄存器值与时间周期的对应关系
-// ============================================================================
 
 // ADXL357 ODR配置值（Register 0x28, Bits[3:0]）
 #define SET_ODR_4000        0x00        // 4000 Hz
@@ -66,11 +41,6 @@ extern float g_norm;
 #define ODR_PERIOD_15_625   64000       // 15.625 Hz = 64000us
 #define ODR_PERIOD_7_813    128000      // 7.813 Hz = 128000us
 #define ODR_PERIOD_3_906    256000      // 3.906 Hz = 256000us
-
-// ============================================================================
-// ODR配置与时间周期的对应关系宏
-// 这些宏可以根据ODR配置值自动获取对应的时间周期
-// ============================================================================
 
 // 根据ODR配置值获取对应的时间周期（微秒）
 #define GET_ODR_PERIOD(odr_value) \
@@ -137,6 +107,24 @@ extern float g_norm;
 // ============================================================================
 
 // 4. 采样频率数值（Hz）- 根据ADXL357_SAMPLE_RATE_ODR自动计算
+//
+// 【可能导致非整数频率的配置说明】：
+// 1. SET_ODR_62_5 (62.5Hz): 周期=16000us, 频率=1000000/16000=62.5Hz (非整数)
+// 2. SET_ODR_31_25 (31.25Hz): 周期=32000us, 频率=1000000/32000=31.25Hz (非整数)
+// 3. SET_ODR_15_625 (15.625Hz): 周期=64000us, 频率=1000000/64000=15.625Hz (非整数)
+// 4. SET_ODR_7_813 (7.813Hz): 周期=128000us, 频率=1000000/128000=7.813Hz (非整数)
+// 5. SET_ODR_3_906 (3.906Hz): 周期=256000us, 频率=1000000/256000=3.906Hz (非整数)
+//
+// 【整数频率配置】：
+// 1. SET_ODR_4000 (4000Hz): 周期=250us, 频率=1000000/250=4000Hz (整数)
+// 2. SET_ODR_2000 (2000Hz): 周期=500us, 频率=1000000/500=2000Hz (整数)
+// 3. SET_ODR_1000 (1000Hz): 周期=1000us, 频率=1000000/1000=1000Hz (整数)
+// 4. SET_ODR_500 (500Hz): 周期=2000us, 频率=1000000/2000=500Hz (整数)
+// 5. SET_ODR_250 (250Hz): 周期=4000us, 频率=1000000/4000=250Hz (整数)
+// 6. SET_ODR_125 (125Hz): 周期=8000us, 频率=1000000/8000=125Hz (整数)
+//
+// 【注意】：当前使用整数除法，非整数频率会被截断
+// 例如：SET_ODR_62_5 实际频率62.5Hz，计算结果为62Hz（丢失0.5Hz）
 #define ADXL357_SAMPLE_RATE_HZ       (1000000 / GET_ODR_PERIOD(ADXL357_SAMPLE_RATE_ODR))    // 自动计算采样频率数值
 
 // 5. 数据组数计算（每次中断处理的数据组数）
@@ -170,8 +158,74 @@ extern float g_norm;
 // 中断频率 = ADXL357_SAMPLES_PER_READ ÷ 9 ÷ ADXL357_SAMPLE_RATE_HZ × 1000ms
 // 当前配置：90字节 ÷ 9字节/组 ÷ 1000Hz × 1000ms = 10ms中断周期
 
-void Reset_Vibration_Stats(void);
-void adxl357_reconfigure_interrupts(void);
+// ============================================================================
+// ADXL357寄存器定义
+// ============================================================================
+
+// 电源控制寄存器位定义（Register 0x2D）
+#define POWER_CTL_START     0x00        // 启动测量模式
+#define POWER_CTL_STOP      0x01        // 停止测量模式（待机模式）
+
+// 中断映射寄存器位定义（Register 0x2A）
+#define INT_MAP_DATA_RDY     0x01        // DATA_READY中断映射到INT1
+#define INT_MAP_FIFO_FULL    0x02        // FIFO_FULL中断映射到INT1
+#define INT_MAP_FIFO_OVR     0x04        // FIFO_OVR中断映射到INT1
+#define INT_MAP_ACT          0x08        // ACT中断映射到INT1
+
+// 状态寄存器位定义（Register 0x04）
+#define STATUS_NONE          0x00        // 无状态位
+#define STATUS_DATA_RDY      0x01        // 数据就绪位
+#define STATUS_FIFO_FULL     0x02        // FIFO满位
+#define STATUS_FIFO_OVR      0x04        // FIFO溢出位
+#define STATUS_ACT           0x08        // 活动检测位
+#define STATUS_NVM_BUSY      0x10        // NVM忙位
+#define STATUS_ALL           0x1F        // 所有状态位
+
+// ============================================================================
+// 结构体定义
+// ============================================================================
+typedef struct {
+    float avg_vibration;
+    float min_vibration;
+    float max_vibration;
+    float vibration;
+    uint32_t account;
+
+    // 新增：用于日志记录的ADXL357振动检测详细数据
+    uint32_t delta_count_total;     // 日志周期内总差值计数
+    uint32_t rms_over_count_total;  // 日志周期内总RMS超过次数
+    float current_rms_value;        // 当前RMS值
+    float max_delta_value_in_period; // 日志周期内差值最大值
+
+    // 新增：ADXL357三轴加速度数据
+    int32_t acc_x_raw;              // X轴加速度原始值（LSB单位）
+    int32_t acc_y_raw;              // Y轴加速度原始值（LSB单位）
+    int32_t acc_z_raw;              // Z轴加速度原始值（LSB单位）
+    float acc_magnitude;            // 三轴加速度模值（LSB单位）
+    float acc_x_g;                  // X轴重力加速度值（g单位）
+    float acc_y_g;                  // Y轴重力加速度值（g单位）
+    float acc_z_g;                  // Z轴重力加速度值（g单位）
+} adxl357_vibration_data_t;
+
+// ============================================================================
+// 全局变量声明
+// ============================================================================
+extern adxl357_vibration_data_t vibration_data;  // ADXL357振动数据全局变量
+extern uint8_t adxl357_raw_buffer[2][ADXL357_SAMPLES_PER_READ + 1];  // ADXL357双缓冲原始数据缓冲区
+extern volatile uint8_t adxl357_data_ready;  // 数据就绪标志
+extern volatile uint8_t adxl357_buffer_entries;  // 缓冲区中的数据条目数
+extern volatile uint8_t adxl357_current_buffer;  // 当前写入缓冲区索引
+extern volatile uint8_t adxl357_process_buffer;  // 当前处理缓冲区索引
+
+// ============================================================================
+// 函数声明
+// ============================================================================
+extern TaskHandle_t     adx357_task_handle;
+extern void adxl357_task(void* p);
+extern void adxl357_reconfigure_interrupts(uint8_t interrupt_type);
+extern void adxl357_host_mode_interrupt_control(bool enable);
+extern void Reset_Vibration_Stats(void);
+extern void Get_Vibration_Data(void);
 
 #endif /* __ADXL357_H__ */
 

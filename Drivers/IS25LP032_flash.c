@@ -958,10 +958,20 @@ int32_t is25pl032_flash_save_dev_cfg(void)
 {
     DEV_CFG_T *p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
 
+    // Flash操作前仅禁用ADXL357中断（防止SPI冲突）
+    adxl357_host_mode_interrupt_control(false);
+
+    // 增加延时确保中断完全禁用
+    vTaskDelay(1);
+
     is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS + sizeof(dev_cfg) * dev_cfg_index,
                                 (uint8_t *)flash_temp_buffer, sizeof(dev_cfg));
     if (memcmp(p_dev_config, &dev_cfg, sizeof(dev_cfg)) == 0)
+    {
+        // 数据相同，无需保存，重新启用ADXL357中断
+        adxl357_host_mode_interrupt_control(true);
         return 0;
+    }
 
     dev_cfg.u_cfg.cfg.device_cfg_tag = DEVICE_CFG_FLAG;
     dev_cfg.u_cfg.cfg.device_cfg_sn++;
@@ -976,6 +986,9 @@ int32_t is25pl032_flash_save_dev_cfg(void)
                                  (uint8_t *)&dev_cfg, sizeof(dev_cfg));
 
     load_algorithm_setting_from_flash();
+
+    // Flash操作后重新启用ADXL357中断
+    adxl357_host_mode_interrupt_control(true);
     return 0;
 }
 /**
@@ -2148,8 +2161,8 @@ void flash_control_sensor_interrupts(bool enable)
         PINS_DRV_SetPinIntSel(PORTE, 1, PORT_INT_FALLING_EDGE);  // PTE1 - ADXL357
         PINS_DRV_SetPinIntSel(PORTE, 5, PORT_INT_FALLING_EDGE);  // PTE5 - IAM20680HT
 
-        // 重新配置ADXL357中断，确保中断正常工作
-        adxl357_reconfigure_interrupts();
+        // 井下模式：重新配置ADXL357为FIFO中断（固定配置）
+        adxl357_reconfigure_interrupts(INT_MAP_FIFO_FULL);
 
         // printf("Flash: Sensor interrupts re-enabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
     } else {

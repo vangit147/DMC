@@ -35,7 +35,6 @@ static TaskHandle_t main_task_handle;
 extern interval_info_t interval_info;
 extern sensor_data_t sensor_data;    // 用于存储传感器数据
 extern inclination_hs_t inc_hs_data; // 倾角高边结构体变量
-extern adxl357_vibration_data_t vibration_data;
 
 // 串口
 static uint8_t UART1_rx_buffer[128];
@@ -839,13 +838,6 @@ void load_algorithm_setting_from_flash(void)
     algorithm_setting.ms_yz = 0.0f;  // Y-Z轴MS矩阵系数
     algorithm_setting.ms_zz = 0.000000628612f;  // Z-Z轴MS矩阵系数
 #endif
-
-    // 加载ADXL357归一化因子NORM
-    float flash_norm = is25pl032_flash_get_norm();
-    if (flash_norm > 0.0f)
-        g_norm = flash_norm;
-    else
-        g_norm = DEFAULT_NORM_VALUE;
 }
 
 /**

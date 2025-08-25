@@ -27,8 +27,6 @@ extern sensor_data_t sensor_data;
 extern ads1278_global_raw_data_t s_ads1278_global_raw_data;
 extern iam_global_raw_data_t s_iam_global_raw_data;
 extern inclination_hs_t inc_hs_data;
-extern adxl357_vibration_data_t vibration_data;
-extern vibration_detector_t vibration_detector;
 
 #define RECEIVE_MSG_LEN 120
 static uint8_t receiveMsg[RECEIVE_MSG_LEN];
@@ -415,12 +413,24 @@ void send_msg(void)
 
     if (receiveMsg[0] == 'F' && receiveMsg[1] == 'S')
     {
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(false);
+        #endif
         is25pl032_flash_reset_rd_index();
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(true);
+        #endif
         goto ok;
     }
     if (receiveMsg[0] == 'F' && receiveMsg[1] == 'L')
     {
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(false);
+        #endif
         is25pl032_flash_delete_all_log();
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(true);
+        #endif
         goto ok;
     }
     if (receiveMsg[0] == 'F' && receiveMsg[1] == 'U')
@@ -434,8 +444,14 @@ void send_msg(void)
     if (receiveMsg[0] == 'F' && receiveMsg[1] == 'A' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
     {
 
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(false);
+        #endif
         log_t log;
         int32_t ret = is25pl032_flash_read_one_log(&log);
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
+        adxl357_host_mode_interrupt_control(true);
+        #endif
         if (!ret)
         {
             goto ok;

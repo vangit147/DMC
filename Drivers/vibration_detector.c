@@ -20,6 +20,12 @@ static uint8_t s_u8_adxl357_vibrating_flag = 0;
 static uint8_t s_u8_gpio_vibrating_flag = 0;  // GPIO振动检测标志
 TaskHandle_t vibration_monitor_task_handle;
 
+// 统计重置相关变量
+static uint32_t stats_reset_counter = 0;  // 统计重置计数器
+// 每10秒重置一次统计（基于定时器频率动态计算）
+// 计算方式：10 × (1000 / VIBRATION_DETECTION_FREQUENCY_MS) = 10 × 100 = 1000次
+#define STATS_RESET_INTERVAL     (10 * (1000 / VIBRATION_DETECTION_FREQUENCY_MS))  // 每10秒重置一次统计
+
 /**
  *******************************************************************************
  * @Description: 获取ADXL357振动标志
@@ -308,6 +314,143 @@ void vibration_detector_load_config(vibration_detector_t *detector)
     detector->config.rms_trigger_ratio = is25pl032_flash_get_rms_trigger_ratio();     // RMS触发次数比例
 }
 
+/**
+ *******************************************************************************
+ * @Description: 处理ADXL357缓冲区数据（在VibrationMonitor_Task中调用）
+ * @Parameters : 无
+ * @RetValue   : 无
+ * @Note       : 检查ADXL357缓冲区是否有新数据，如果有则进行处理
+ *               包括：数据解析、振动检测、滑动窗口更新
+ *               此函数在VibrationMonitor_Task中调用
+ *******************************************************************************
+ */
+void vibration_detector_process_adxl357_data(void)
+{
+    // 记录函数开始时间
+    // uint32_t function_start_time = xTaskGetTickCount();
+
+    // 检查是否有新数据
+    if(adxl357_data_ready == 0) {
+        return; // 没有新数据，直接返回
+    }
+
+    // 获取缓冲区数据
+    uint8_t entries_to_process = adxl357_buffer_entries;
+    adxl357_buffer_entries = 0; // 清空缓冲区计数
+    adxl357_data_ready = 0; // 清空数据就绪标志
+
+    // printf("VibrationDetector: Processing ADXL357 data, entries: %d (samples: %d)\r\n",
+    //        entries_to_process, entries_to_process / 9);
+
+    // 打印从数组读取的数据（只打印第一组）
+    // printf("VibrationDetector: Buffer[%d] data (bytes: %d):\r\n", adxl357_process_buffer, entries_to_process);
+    // printf("Command: 0x%02X\r\n", adxl357_raw_buffer[adxl357_process_buffer][0]);
+    // if(entries_to_process >= 9) {
+    //     uint16_t sample_start = 1;  // 第一组数据的起始位置
+    //     printf("Sample[0]: X=0x%02X%02X%02X Y=0x%02X%02X%02X Z=0x%02X%02X%02X\r\n",
+    //            adxl357_raw_buffer[adxl357_process_buffer][sample_start], adxl357_raw_buffer[adxl357_process_buffer][sample_start+1], adxl357_raw_buffer[adxl357_process_buffer][sample_start+2],
+    //            adxl357_raw_buffer[adxl357_process_buffer][sample_start+3], adxl357_raw_buffer[adxl357_process_buffer][sample_start+4], adxl357_raw_buffer[adxl357_process_buffer][sample_start+5],
+    //            adxl357_raw_buffer[adxl357_process_buffer][sample_start+6], adxl357_raw_buffer[adxl357_process_buffer][sample_start+7], adxl357_raw_buffer[adxl357_process_buffer][sample_start+8]);
+    // }
+
+    if(entries_to_process >= 9) {  // 确保至少有9字节（一个完整样本）
+        // 处理这次读取的数据
+        for(uint8_t i = 0; i < (entries_to_process / 9); i++) {
+            // 计算当前样本在缓冲区中的起始位置
+            uint16_t sample_start = 1 + (i * 9);  // 跳过命令字节，每个样本9字节
+
+            // 提取X轴数据 (前3字节)
+            int32_t x_raw = ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start] << 12) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+1] << 4) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+2] >> 4);
+
+            // 提取Y轴数据 (中间3字节)
+            int32_t y_raw = ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+3] << 12) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+4] << 4) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+5] >> 4);
+
+            // 提取Z轴数据 (后3字节)
+            int32_t z_raw = ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+6] << 12) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+7] << 4) |
+                        ((int32_t)adxl357_raw_buffer[adxl357_process_buffer][sample_start+8] >> 4);
+
+            // 处理20位有符号数据(存储在24位中，最高4位为符号扩展)
+            if(x_raw & 0x80000) {  // 检查符号位（第19位）
+                x_raw |= 0xFFF00000;  // 符号扩展
+            } else {
+                x_raw &= 0x000FFFFF;  // 清除高位的符号扩展
+            }
+
+            if(y_raw & 0x80000) {  // 检查符号位（第19位）
+                y_raw |= 0xFFF00000;  // 符号扩展
+            } else {
+                y_raw &= 0x000FFFFF;  // 清除高位的符号扩展
+            }
+
+            if(z_raw & 0x80000) {  // 检查符号位（第19位）
+                z_raw |= 0xFFF00000;  // 符号扩展
+            } else {
+                z_raw &= 0x000FFFFF;  // 清除高位的符号扩展
+            }
+
+            // 过滤全零数据
+            if(x_raw == 0 && y_raw == 0 && z_raw == 0) {
+                continue;  // 跳过这个样本，处理下一个
+            }
+
+            // 更新vibration_data中的三轴原始加速度数据字段
+            vibration_data.acc_x_raw = x_raw;
+            vibration_data.acc_y_raw = y_raw;
+            vibration_data.acc_z_raw = z_raw;
+
+            // 计算转换后的加速度数据（g单位）
+            vibration_data.acc_x_g = (float)vibration_data.acc_x_raw / vibration_detector.config.norm;
+            vibration_data.acc_y_g = (float)vibration_data.acc_y_raw / vibration_detector.config.norm;
+            vibration_data.acc_z_g = (float)vibration_data.acc_z_raw / vibration_detector.config.norm;
+
+            // 计算原始数据的模长（用于NORM计算）
+            vibration_data.acc_magnitude = sqrtf((float)vibration_data.acc_x_raw * (float)vibration_data.acc_x_raw +
+                                               (float)vibration_data.acc_y_raw * (float)vibration_data.acc_y_raw +
+                                               (float)vibration_data.acc_z_raw * (float)vibration_data.acc_z_raw);
+
+            // 计算当前加速度模长值（基于g单位数据）
+            vibration_data.vibration = sqrtf(vibration_data.acc_x_g * vibration_data.acc_x_g +
+                                           vibration_data.acc_y_g * vibration_data.acc_y_g +
+                                           vibration_data.acc_z_g * vibration_data.acc_z_g);
+
+            // 更新滑动窗口数据
+            vibration_sliding_window_update(&vibration_detector.sliding_window,
+                                          vibration_data.vibration,
+                                          vibration_detector.config.threshold,
+                                          vibration_detector.config.delta_threshold,
+                                          vibration_detector.config.rms_threshold);
+
+            // 更新振动统计信息
+            Get_Vibration_Data();
+        }
+    }
+
+    // 定期重置统计变量，防止溢出（仅在井上模式下）
+    if(get_downhole() == 0) {  // 井上模式
+        stats_reset_counter++;
+        if(stats_reset_counter >= STATS_RESET_INTERVAL) {
+            Reset_Vibration_Stats();
+            stats_reset_counter = 0;
+            // printf("VibrationDetector: Stats reset in host mode (counter: %lu)\r\n", stats_reset_counter);
+        }
+    } else {
+        // 井下模式：重置计数器，因为main_task.c会处理统计重置
+        stats_reset_counter = 0;
+    }
+
+    // 计算并打印数据处理时间
+    // uint32_t function_end_time = xTaskGetTickCount();
+    // uint32_t execution_time_ms = (function_end_time - function_start_time) * portTICK_PERIOD_MS;
+
+    // 打印数据处理时间
+    // printf("VibrationDetector: Data processing time: %lu ms\r\n", execution_time_ms);
+}
+
 // 定时器回调函数
 static void vibration_timer_cb(TimerHandle_t xTimer)
 {
@@ -316,14 +459,14 @@ static void vibration_timer_cb(TimerHandle_t xTimer)
 
 /**
  *******************************************************************************
- * @Description: 振动监控任务
+ * @Description: 振动监控任务（优化版本）
  * @Parameters : pvParameters - 任务参数（未使用）
  * @RetValue   : 无
- * @Note       : 振动检测已经在ADXL357中断中实现，此任务主要负责：
- *               1. 初始化振动检测器
- *               2. 定期更新配置参数（从Flash读取最新配置）
- *               3. 根据检测结果更新全局振动标志
- *               振动检测算法在ADXL357中断中直接处理，提高实时性
+ * @Note       : 优化后的振动监控任务，实现数据采集与处理分离
+ *               1. 硬件中断只负责快速读取数据到缓冲区
+ *               2. 定时器任务负责复杂的数据处理和振动检测
+ *               3. 提高系统实时性和稳定性
+ *               4. 避免在硬件中断中执行复杂计算
  *******************************************************************************
  */
 void VibrationMonitor_Task(void *pvParameters)
@@ -333,7 +476,7 @@ void VibrationMonitor_Task(void *pvParameters)
     // 执行振动检测器完整初始化
     vibration_detector_init(&vibration_detector);
 
-    // 创建并立即启动定时器，用于定期更新配置参数
+    // 创建并立即启动定时器，用于定期处理ADXL357数据和更新配置参数
     TimerHandle_t vibration_timer = xTimerCreate("vibration_timer", VIBRATION_DETECTION_FREQUENCY_MS, 1, 0, vibration_timer_cb);
     xTimerStart(vibration_timer, 0); // 立即启动，不延迟
 
@@ -343,13 +486,16 @@ void VibrationMonitor_Task(void *pvParameters)
 
         if(notify & EVENT_VIBRATION_TIMER)
         {
-            // 重新读取配置参数，确保上位机修改后立即生效
+            // 第一步：处理ADXL357缓冲区数据（从硬件中断中分离出来）
+            vibration_detector_process_adxl357_data();
+
+            // 第二步：重新读取配置参数，确保上位机修改后立即生效
             vibration_detector_load_config(&vibration_detector);
 
-            // 直接进行振动检测判断，基于ADXL357中断中更新的滑动窗口数据
+            // 第三步：进行振动检测判断，基于处理后的数据
             vibration_sliding_window_detect(&vibration_detector.sliding_window, &vibration_detector);
 
-            // 根据检测结果更新全局振动标志，供其他模块使用
+            // 第四步：根据检测结果更新全局振动标志，供其他模块使用
             if(vibration_detector.state.is_triggered)
                 s_u8_adxl357_vibrating_flag = 1;  // 检测到振动，设置标志
             else

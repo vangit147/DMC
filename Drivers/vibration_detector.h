@@ -64,6 +64,25 @@ extern "C" {
 // 振动检测频率，单位ms（自动与ADXL357中断频率匹配）
 // 计算方式：1000ms ÷ (ADXL357_SAMPLE_RATE_HZ / ADXL357_DATA_GROUPS_PER_READ)
 // 当前配置：1000ms ÷ (1000Hz / 10组) = 1000ms ÷ 100 = 10ms
+//
+// 【可能导致非整数频率的配置说明】：
+// 1. 当ADXL357_SAMPLE_RATE_HZ不是整数时（如62.5Hz），会导致计算结果不准确
+// 2. 当(1000 * ADXL357_DATA_GROUPS_PER_READ)不能被ADXL357_SAMPLE_RATE_HZ整除时
+//
+// 【具体配置示例】：
+// 1. SET_ODR_62_5 + 9字节: (1000*1)/62 = 16.13ms (非整数)
+// 2. SET_ODR_31_25 + 9字节: (1000*1)/31 = 32.26ms (非整数)
+// 3. SET_ODR_15_625 + 9字节: (1000*1)/15 = 66.67ms (非整数)
+// 4. SET_ODR_7_813 + 9字节: (1000*1)/7 = 142.86ms (非整数)
+// 5. SET_ODR_3_906 + 9字节: (1000*1)/3 = 333.33ms (非整数)
+//
+// 【整数频率配置示例】：
+// 1. SET_ODR_1000 + 90字节: (1000*10)/1000 = 10ms (整数)
+// 2. SET_ODR_500 + 90字节: (1000*10)/500 = 20ms (整数)
+// 3. SET_ODR_250 + 72字节: (1000*8)/250 = 32ms (整数)
+// 4. SET_ODR_125 + 45字节: (1000*5)/125 = 40ms (整数)
+//
+// 【注意】：当前使用整数除法，非整数结果会被截断
 #define VIBRATION_DETECTION_FREQUENCY_MS    ((1000 * ADXL357_DATA_GROUPS_PER_READ) / ADXL357_SAMPLE_RATE_HZ)
 
 // 滑动窗口大小（自动计算）
@@ -272,6 +291,14 @@ void vibration_sliding_window_update(vibration_sliding_window_t *window,
  */
 void vibration_sliding_window_detect(vibration_sliding_window_t *window,
                                    vibration_detector_t *detector);
+
+/**
+ * @brief 处理ADXL357缓冲区数据（在VibrationMonitor_Task中调用）
+ * @note 检查ADXL357缓冲区是否有新数据，如果有则进行处理
+ *       包括：数据解析、振动检测、滑动窗口更新
+ *       此函数在VibrationMonitor_Task中调用
+ */
+void vibration_detector_process_adxl357_data(void);
 
 // FreeRTOS任务相关声明
 extern void VibrationMonitor_Task(void *pvParameters);  // 振动监控任务
