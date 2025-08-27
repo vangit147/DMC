@@ -25,6 +25,7 @@ extern "C" {
 #include <math.h>
 #include <time.h>
 
+#include "../version.h"
 #include "adxl357.h"
 #include "vibration_detector.h"
 #include "device_registers.h"

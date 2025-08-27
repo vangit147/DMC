@@ -150,7 +150,7 @@ void cleanArray(uint8_t *array, uint8_t size)
 
 void send_msg(void)
 {
-    uint8_t temp_data[32]; // 在函数开始处定义
+    uint8_t temp_data[15+VERSION_MAX_LENGTH]; // 在函数开始处定义
     uint32_t sendLength = 0;
     if (isSend < 1)
     {
@@ -161,7 +161,7 @@ void send_msg(void)
     {
 
         char pro_id[15];
-        char version[15];
+        char version[VERSION_MAX_LENGTH];
         uint8_t rtc_data[8];
         uint32_t sec, min, hours, day, mon, year;
         float acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, temperature;

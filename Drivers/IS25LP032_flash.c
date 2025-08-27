@@ -14,7 +14,6 @@
 /************* Included files, Macros, Various and Declarations ***************/
 #include "IS25LP032_flash.h"
 #include "mud_pulse.h"
-#include "../version.h"  // 包含版本号定义
 
 #define FLASH_PP 0X02
 #define FLASH_RDSR 0X05
@@ -126,7 +125,7 @@ typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
     float py[5];
     float pz[5];
     char pro_id[15];
-    char version[15];
+    char version[VERSION_MAX_LENGTH];
     /* 温度补偿范围设置 */
     float temp_comp_lower_limit; // 温度补偿下限，默认-20°C
     float temp_comp_upper_limit; // 温度补偿上限，默认150°C
@@ -182,7 +181,7 @@ static const CFG_T default_cfg = {
     .py = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     .pz = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     .pro_id = {0},
-    .version = {0},
+    .version = {0},  // 版本字段设为空，版本信息总是从TGDMC宏获取
     /* 温度补偿范围设置 */
     .temp_comp_lower_limit = -20.0f, // 温度补偿下限，默认-20°C
     .temp_comp_upper_limit = 150.0f, // 温度补偿上限，默认150°C
@@ -890,10 +889,10 @@ int32_t is25pl032_flash_normal_write(uint32_t flash_address, uint8_t *data_buffe
             writed_bytes = 4096;
         else
             writed_bytes = len;
+        is25pl032_flash_write_page(flash_address, data_buffer, writed_bytes);
         len -= writed_bytes;
         flash_address += writed_bytes;
         data_buffer += writed_bytes;
-        is25pl032_flash_write_page(flash_address, data_buffer, writed_bytes);
     }
 
     return 0;
@@ -959,7 +958,9 @@ int32_t is25pl032_flash_save_dev_cfg(void)
     DEV_CFG_T *p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
 
     // Flash操作前仅禁用ADXL357中断（防止SPI冲突）
+    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
     adxl357_host_mode_interrupt_control(false);
+    #endif
 
     // 增加延时确保中断完全禁用
     vTaskDelay(1);
@@ -969,7 +970,9 @@ int32_t is25pl032_flash_save_dev_cfg(void)
     if (memcmp(p_dev_config, &dev_cfg, sizeof(dev_cfg)) == 0)
     {
         // 数据相同，无需保存，重新启用ADXL357中断
+        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
         adxl357_host_mode_interrupt_control(true);
+        #endif
         return 0;
     }
 
@@ -988,7 +991,9 @@ int32_t is25pl032_flash_save_dev_cfg(void)
     load_algorithm_setting_from_flash();
 
     // Flash操作后重新启用ADXL357中断
+    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
     adxl357_host_mode_interrupt_control(true);
+    #endif
     return 0;
 }
 /**
@@ -1517,7 +1522,11 @@ void is25pl032_flash_get_proid(char *pro_id)
 
 void is25pl032_flash_get_version(char *version)
 {
-    memcpy(version, TGDMC, sizeof(dev_cfg.u_cfg.cfg.version));
+    // 始终使用编译时的版本信息，确保版本号与当前代码一致
+    // 先清零整个缓冲区
+    memset(version, 0, sizeof(dev_cfg.u_cfg.cfg.version));
+    // 复制TGDMC字符串，使用strcpy确保完整复制
+    strcpy(version, TGDMC);
 }
 /**
   *******************************************************************************
@@ -2155,6 +2164,7 @@ uint32_t is25pl032_flash_get_rms_trigger_ratio(void)
   */
 void flash_control_sensor_interrupts(bool enable)
 {
+    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
     if(enable) {
         // 重新启用传感器中断
         // printf("Flash: Re-enabling sensor interrupts...\r\n");
@@ -2172,4 +2182,8 @@ void flash_control_sensor_interrupts(bool enable)
         PINS_DRV_SetPinIntSel(PORTE, 5, PORT_DMA_INT_DISABLED);  // PTE5 - IAM20680HT
         // printf("Flash: Sensor interrupts disabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
     }
+    #else
+    // Flash操作时的中断控制被禁用，不执行任何操作
+    (void)enable; // 避免编译器警告
+    #endif
 }

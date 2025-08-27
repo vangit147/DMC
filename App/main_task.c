@@ -970,9 +970,11 @@ void main_task(void *p)
     xTaskCreate(signal_process_task, "signal_process_task", 512, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
+    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
     xTaskCreate(adxl357_task, "adxl357_task", 256, NULL, TASK_PRIORITY_ADXL357, &adx357_task_handle);
     xTaskCreate(VibrationMonitor_Task, "VibrationMonitor_Task", 256, NULL, TASK_PRIORITY_ADXL357, &vibration_monitor_task_handle);
-		
+    #endif
+
     // 处理上位机事件
     waiting_for_uart2_timeout_tmr = xTimerCreate("uart2_timeout_tmr", 20 * 1000, 0, 0, timer_waiting_for_uart2_timeout_cb);
     xTimerStart(waiting_for_uart2_timeout_tmr, 1000);
