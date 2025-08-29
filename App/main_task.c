@@ -727,7 +727,7 @@ void load_algorithm_setting_from_flash(void)
     double xr_limit, yr_limit;
     is25pl032_flash_get_param(&accfir, &gyrofir, &xr_limit, &yr_limit, &gain);
     algorithm_setting.xr_limit = xr_limit;
-    algorithm_setting.xr_limit = yr_limit;
+    algorithm_setting.yr_limit = yr_limit;
     // 确保虚拟半径限制参数有效
     if (algorithm_setting.yr_limit <= 0)
     {
