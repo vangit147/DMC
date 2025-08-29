@@ -223,9 +223,8 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
 
-        sendLength = 121 + n;
-        output_buffer[3] = sendLength >> 16 & 0xff;
-        output_buffer[4] = sendLength & 0xff;
+        output_buffer[3] = (121 + n) >> 16 & 0xff;
+        output_buffer[4] = (121 + n) & 0xff;
         *p_uint8++ = year >> 24 & 0xff;
         *p_uint8++ = year >> 16 & 0xff;
         *p_uint8++ = year >> 8 & 0xff;
@@ -320,9 +319,8 @@ void send_msg(void)
 
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
-        sendLength = 126;
-        output_buffer[3] = sendLength >> 16 & 0xff;
-        output_buffer[4] = sendLength & 0xff;
+        output_buffer[3] = 126 >> 16 & 0xff;
+        output_buffer[4] = 126 & 0xff;
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.vibration_source, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vibration_detector.config.threshold, 4);
@@ -475,9 +473,8 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
 
-        sendLength = 194;
-        output_buffer[3] = sendLength >> 16 & 0xff;
-        output_buffer[4] = sendLength & 0xff;
+        output_buffer[3] = 194 >> 16 & 0xff;
+        output_buffer[4] = 194 & 0xff;
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&year, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&mon, 4);
@@ -548,7 +545,6 @@ void send_msg(void)
 
         send_data_to_vd_tool(output_buffer, 61);
         isSend = 0;
-        goto ok;
     }
 
     if (receiveMsg[0] == 'K' && receiveMsg[1] == 'P' && receiveMsg[3] == '=' && receiveMsg[4] != '?')
@@ -1285,6 +1281,7 @@ void send_msg(void)
 
         // 发送完整的振动检测数据包（72字节）
         send_data_to_vd_tool(output_buffer, sendLength);
+        sendLength = 0;
         isSend = 0;
     }
 
