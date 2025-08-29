@@ -22,28 +22,20 @@ extern "C" {
 #include "arm_math.h"
 
 // 滤波器定义
-#define FILTER_TAP_NUM 257  // 滤波器阶数:抽头数 = 阶数 + 1 = 256 + 1
-#define NUM_FILTERS 17  // 总滤波器数量
+#define FILTER_TAP_NUM 513  // 滤波器阶数:抽头数 = 阶数 + 1 = 512 + 1
+#define NUM_FILTERS 9  // 总滤波器数量
 
 // 滤波器类型枚举
 typedef enum {
-    FIR_LOW_20_000_980 = 0,  // 低通滤波器（9.8Hz）
-    FIR_LOW_20_030_045 = 1,  // 低通滤波器（0.3-0.45Hz）
-    FIR_LOW_20_050_BMW = 2,  // 低通滤波器（0.5Hz，布莱克曼窗）
-    FIR_LOW_20_010_KBW = 3,  // 低通滤波器（0.1Hz，凯泽窗）
-    FIR_BAND_20_012_085 = 4, // 带通滤波器（0.12-0.85Hz）
-    FIR_BAND_20_025_110 = 5, // 带通滤波器（0.25-1.10Hz）
-    FIR_BAND_20_055_145 = 6, // 带通滤波器（0.55-1.45Hz）
-    FIR_BAND_20_085_175 = 7, // 带通滤波器（0.85-1.75Hz）
-    FIR_BAND_20_115_205 = 8, // 带通滤波器（1.15-2.05Hz）
-    FIR_BAND_20_145_235 = 9, // 带通滤波器（1.45-2.35Hz）
-    FIR_BAND_20_175_265 = 10,// 带通滤波器（1.75-2.65Hz）
-    FIR_BAND_20_205_295 = 11,// 带通滤波器（2.05-2.95Hz）
-    FIR_BAND_20_235_325 = 12,// 带通滤波器（2.35-3.25Hz）
-    FIR_BAND_20_265_355 = 13,// 带通滤波器（2.65-3.55Hz）
-    FIR_BAND_20_295_385 = 14,// 带通滤波器（2.95-3.85Hz）
-    FIR_BAND_20_325_415 = 15,// 带通滤波器（3.25-4.15Hz）
-    FIR_BAND_20_355_445 = 16,// 带通滤波器（3.55-4.45Hz）
+    FIR_LOW_50_512_200_CHEB = 0,    // 低通滤波器（200Hz，切比雪夫窗，512阶，陀螺仪）
+    FIR_LOW_50_512_040_CHEB = 1,    // 低通滤波器（0.4Hz，切比雪夫窗，512阶，加速度计）
+    FIR_BAND_50_512_025_120_CHEB = 2, //带通滤波器(0.25-1.2Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减80dB)
+    FIR_BAND_50_512_070_170_CHEB = 3, //带通滤波器(0.7-1.7Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
+    FIR_BAND_50_512_120_220_CHEB = 4, //带通滤波器(1.2-2.2Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
+    FIR_BAND_50_512_170_270_CHEB = 5, //带通滤波器(1.7-2.7Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
+    FIR_BAND_50_512_220_320_CHEB = 6, //带通滤波器(2.2-3.2Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
+    FIR_BAND_50_512_270_370_CHEB = 7, //带通滤波器(2.7-3.7Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
+    FIR_BAND_50_512_320_420_CHEB = 8 //带通滤波器(3.2-4.2Hz, 切比雪夫窗，512阶,用于x/y轴加速度计滤波，旁瓣衰减100db)
 } FIR_FilterType;
 
 // 滤波器配置结构体
@@ -58,25 +50,22 @@ typedef struct {
 extern const float32_t * const fir_coeffs_flash[NUM_FILTERS];
 
 //---------------- 独立资源声明（加速度Z轴和陀螺仪z轴）----------------
-extern arm_fir_instance_f32 fir_acc_z_instance;  // 加速度计Z轴实例
+// 注释掉Z轴加速度计FIR滤波器实例，改用IIR滤波器
+// extern arm_fir_instance_f32 fir_acc_z_instance;  // 加速度计Z轴实例
 extern arm_fir_instance_f32 fir_acc_x_instance;  // 加速度计X轴实例
 extern arm_fir_instance_f32 fir_acc_y_instance;  // 加速度计Y轴实例
-extern arm_fir_instance_f32 fir_gyro_z_instance; // 陀螺仪Z轴实例
-extern arm_fir_instance_f32 fir_gyro_z_instance_for_compensation; // 陀螺仪Z轴标定用低通滤波实例
-//extern arm_fir_instance_f32 fir_gyro_x_instance; // 陀螺仪X轴实例
-//extern arm_fir_instance_f32 fir_gyro_y_instance; // 陀螺仪Y轴实例
+//用中位数滤波+延时滤波代替Z轴陀螺仪FIR滤波器
+//extern arm_fir_instance_f32 fir_gyro_z_instance; // 陀螺仪Z轴实例
 
 // 公共系数矩阵
 extern float32_t fir_shared_coeffs[FILTER_TAP_NUM];  // 所有滤波器共享的系数矩阵
 
 // 状态缓冲区
-extern float32_t fir_acc_z_state[FILTER_TAP_NUM + 3];//加速度计Z状态缓冲
+// Z轴加速度计，改用IIR滤波器
 extern float32_t fir_acc_x_state[FILTER_TAP_NUM + 3];//加速度计X状态缓冲
 extern float32_t fir_acc_y_state[FILTER_TAP_NUM + 3];//加速度计Y状态缓冲
-extern float32_t fir_gyro_z_state[FILTER_TAP_NUM + 3];//陀螺仪Z状态缓冲
-//extern float32_t fir_gyro_z_state_for_compensation[FILTER_TAP_NUM + 3];//陀螺仪Z标定用低通滤波状态缓冲
-//extern float32_t fir_gyro_x_state[FILTER_TAP_NUM + 3];//陀螺仪X状态缓冲
-//extern float32_t fir_gyro_y_state[FILTER_TAP_NUM + 3];//陀螺仪Y状态缓冲
+//用中位数滤波+延时滤波代替Z轴陀螺仪FIR滤波器
+//extern float32_t fir_gyro_z_state[FILTER_TAP_NUM + 3];//陀螺仪Z状态缓冲
 
 // 函数声明
 void fir_init_all(void);                                // 初始化所有滤波器

@@ -10,6 +10,7 @@
  *   NAME                        DATE                      CONTENT
  * Gordon                       2025.05.05                    CREATE
  * Gordon               2025.06.30                  修改#include "../drivers/ads1278.h"为#include "../drivers/ads1278_imu.h"  
+ * Gordon                       2025.08.27                    UPDATE
 
  *****************************************************************************
  */
@@ -24,31 +25,34 @@
 #include "ads1278_imu.h"  //2025.06.30
 //#include "ie_task.h"
 #include "../common/fir_config.h"
+#include "../common/iir_lowpass_filter.h"
 
 /* 宏定义 */
 // 角度转弧度系数 (π/180)，保留7位有效数字
 #define DEG_TO_RAD 0.0174533f
 
 // 带通滤波器中心频率定义
-#define FIR_BAND_20_012_085_CENTER 0.4f  // 0.12-0.85Hz带通中心频率
-#define FIR_BAND_20_025_110_CENTER 0.7f  // 0.25-1.10Hz带通中心频率
-#define FIR_BAND_20_055_145_CENTER 1.0f  // 0.55-1.45Hz带通中心频率
-#define FIR_BAND_20_085_175_CENTER 1.3f  // 0.85-1.75Hz带通中心频率
-#define FIR_BAND_20_115_205_CENTER 1.6f  // 1.15-2.05Hz带通中心频率
-#define FIR_BAND_20_145_235_CENTER 1.9f  // 1.45-2.35Hz带通中心频率
-#define FIR_BAND_20_175_265_CENTER 2.2f  // 1.75-2.65Hz带通中心频率
-#define FIR_BAND_20_205_295_CENTER 2.5f  // 2.05-2.95Hz带通中心频率
-#define FIR_BAND_20_235_325_CENTER 2.8f  // 2.35-3.25Hz带通中心频率
-#define FIR_BAND_20_265_355_CENTER 3.1f  // 2.65-3.55Hz带通中心频率
-#define FIR_BAND_20_295_385_CENTER 3.4f  // 2.95-3.85Hz带通中心频率
-#define FIR_BAND_20_325_415_CENTER 3.7f  // 3.25-4.15Hz带通中心频率
-#define FIR_BAND_20_355_445_CENTER 4.0f  // 3.55-4.45Hz带通中心频率
+#define FIR_BAND_50_512_025_120_CENTER 0.8f  // 0.25-1.2Hz带通中心频率
+#define FIR_BAND_50_512_070_170_CENTER 1.2f  // 0.7-1.7Hz带通中心频率
+#define FIR_BAND_50_512_120_220_CENTER 1.7f  // 1.2-2.2Hz带通中心频率
+#define FIR_BAND_50_512_170_270_CENTER 2.2f  // 1.7-2.7Hz带通中心频率
+#define FIR_BAND_50_512_220_320_CENTER 2.7f  // 2.2-3.2Hz带通中心频率
+#define FIR_BAND_50_512_270_370_CENTER 3.2f  // 2.7-3.7Hz带通中心频率
+#define FIR_BAND_50_512_320_420_CENTER 3.7f  // 3.2-4.2Hz带通中心频率
 
 // 低通滤波器截止频率定义
-#define FIR_LOW_20_000_980_CENTER 9.8f   // 9.8Hz低通截止频率
-#define FIR_LOW_20_030_045_CENTER 0.375f // 0.3-0.45Hz低通截止频率
-#define FIR_LOW_20_050_BMW_CENTER 0.375f // 0.5Hz低通截止频率（布莱克曼窗）
-#define FIR_LOW_20_010_KBW_CENTER 0.1f   // 0.1Hz低通截止频率（凯塞窗）
+#define FIR_LOW_50_512_200_CHEB_CENTER 20.0f // 20Hz低通截止频率
+#define FIR_LOW_50_512_040_CHEB_CENTER 0.4f // 0.4Hz低通截止频率
+#define LPF_TO_BPF 0.3f // 低通向带通切换的边界频率
+#define BPF_TO_LPF 0.3f // 带通向低通切换的边界频率
+
+// 低通-带通切换迟滞
+#define HYSTERESIS_HIGH 0.02f        // 低通向带通切换的迟滞
+#define HYSTERESIS_LOW 0.05f         // 带通向低通切换的迟滞
+#define HYSTERESIS_BAND 0.05f         // 带通滤波器之间的迟滞
+
+#define BAND_SWITCH_THRESHOLD 0.25f        // 离开带通中心频率的距离阈值
+
 
 /* 类型定义 */
 // 传感器类型枚举
@@ -101,6 +105,12 @@ typedef struct {
     float gy_dps;
     float gz_dps;
     float t_C;
+
+        // 新增：始终通过IIR低通滤波的ax和ay信号 25/08/27 Gordon Li
+    float ax_raw_lpf;    // ax轴：始终通过IIR低通滤波的原始信号
+    float ay_raw_lpf;    // ay轴：始终通过IIR低通滤波的原始信号
+    float ax_g_lpf;      // ax轴：始终通过IIR低通滤波的g值信号
+    float ay_g_lpf;      // ay轴：始终通过IIR低通滤波的g值信号
 } filtered_signal_t;
 
 /* 全局变量声明 */

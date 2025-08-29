@@ -21,7 +21,6 @@ extern "C" {
 /************* Included files, Macros, Various and Declarations ***************/
 #include "main.h"
 
-
 /******************************** Functions **********************************/
 void get_acc(float *x, float *y, float *z);
 void get_ko_value(float *k0, float *k1, float *k2);

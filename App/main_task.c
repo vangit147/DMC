@@ -32,9 +32,7 @@ static TaskHandle_t main_task_handle;
 #define OFFSET_LEN 8
 
 // 声明外部变量
-extern interval_info_t interval_info;
 extern sensor_data_t sensor_data;    // 用于存储传感器数据
-extern inclination_hs_t inc_hs_data; // 倾角高边结构体变量
 
 // 串口
 static uint8_t UART1_rx_buffer[128];
@@ -47,10 +45,10 @@ static TimerHandle_t lpuart2_rx_timer;
 
 static int8_t downhole;
 
-static float sum_roll;
 float trans_ie;
 float rpm;
-
+static float gz_avg = 0;
+static uint32_t avg_count = 0;
 static float s_f32_36V;             // ADC0_SE2  PTA6  36V监测
 
 /******************************** Functions **********************************/
@@ -394,6 +392,11 @@ static void on_100ms_timer_event(void)
 
     timestamp = mktime(&time_data) - 3600 * 8; // ZONE 8
 
+    // 调用get_sensor_data函数获取传感器数据
+    get_sensor_data(&sensor_data);
+    gz_avg += sensor_data.gz_dps;
+    avg_count++;
+
     // 启动ADC，获取36V电压
     start_and_get_adc_result();
 
@@ -453,8 +456,6 @@ static void on_100ms_timer_event(void)
             log_t log = {0};
             log_period = algorithm_setting.log_period_time;
 
-            // 调用get_sensor_data函数获取传感器数据
-            get_sensor_data(&sensor_data);
 
             // 从sensor_data 全局变量中获取传感器数据
             log.timestamp = timestamp;
@@ -501,7 +502,7 @@ static void on_100ms_timer_event(void)
             // 从interval_info_data中获取标准差数据
             log.gz_dps_sdv_max = interval_info.sdv_gyro_z_max;
             log.gz_dps_sdv_min = interval_info.sdv_gyro_z_min;
-            log.std_dev_ax_ay_max = interval_info.std_dev_ax_ay_max; // 如果interval_info中没有这些数据，则设为0
+            log.std_dev_ax_ay_max = 0; // 如果interval_info中没有这些数据，则设为0
             if (get_vibrating_flag())
                 log.flag |= LOG_FLAG_VIBRATING;
             if (get_adxl357_vibrating_flag())
@@ -553,8 +554,10 @@ static void on_100ms_timer_event(void)
             }
 
             reset_interval_info();
-
-            sum_roll = 0;
+            //add yq 2025.8.21 - 之前版本缺少rpm转速计算
+            rpm = gz_avg / avg_count;
+            gz_avg=0;
+            avg_count=0;
 
             // 写入日志到Flash，返回值：0-成功，-1-日志写入失败，-2-日志上下文更新失败，-3-FLASH_INITED_FLAG恢复失败
             if ((ret = is25pl032_flash_write_one_log(&log)) != 0)
@@ -941,7 +944,6 @@ static void setting_for_test(void)
   */
 void main_task(void *p)
 {
-    sum_roll = 0;
     downhole = 1;
     TimerHandle_t waiting_for_uart2_timeout_tmr;
 
@@ -961,12 +963,13 @@ void main_task(void *p)
     // 初始化泥浆脉冲
     mud_pulse_init(&mud_pulse);
 
+    // 启动信号处理任务,如果加速度计/陀螺仪涉及到20680Ht芯片，则启动20680任务
     if (algorithm_setting.acc_sensor_type == SIGNAL_PROCESS_ACC_HT20680 || algorithm_setting.gyro_sensor_type == SIGNAL_PROCESS_GYRO_HT20680)
     {
         xTaskCreate(iam_20680ht_task, "iam_20680ht_task", 128, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
     }
     // 启动信号处理任务
-    signal_process_init();
+    signal_process_init(); //滤波器初始化处理也在其中
     xTaskCreate(signal_process_task, "signal_process_task", 512, NULL, TASK_PRIORITY_SIGNAL_PROCESS, &signal_process_task_handle);
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);

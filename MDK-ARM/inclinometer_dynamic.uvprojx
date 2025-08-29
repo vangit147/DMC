@@ -830,14 +830,14 @@
           <GroupName>common</GroupName>
           <Files>
             <File>
-              <FileName>common.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\common\common.c</FilePath>
-            </File>
-            <File>
               <FileName>fir_config.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\common\fir_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>iir_lowpass_filter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\iir_lowpass_filter.c</FilePath>
             </File>
           </Files>
         </Group>

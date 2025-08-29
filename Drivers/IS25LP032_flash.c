@@ -22,7 +22,7 @@
 #define FLASH_RDMDID 0X90
 #define FLASH_SER 0XD7
 
-static uint64_t flash_temp_buffer[512]; // 4K读写缓冲区
+static uint64_t  flash_temp_buffer[178];    //2K读写缓冲区 (从512减少到178) 25/08/26 Gordon
 
 /*
 FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
@@ -151,8 +151,8 @@ static const CFG_T default_cfg = {
     .gyro_sensor_type = 0, // 默认使用IAM-20680HT陀螺仪
     .unused_0 = {0},
     .offset = {0.0f, 0.0f},
-    .xr_limit = 0.0015f,
-    .yr_limit = 0.015f,
+    .xr_limit = 0.13f,
+    .yr_limit = 0.1f,
     .gx_bias = 0.0f,
     .gy_bias = 0.0f,
     .gz_bias = 0.0f,
