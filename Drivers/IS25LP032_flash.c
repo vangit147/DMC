@@ -1006,11 +1006,11 @@ int32_t is25pl032_flash_init(void)
     }
 
     // 检查参数
-    is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
-    p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
     dev_cfg_max_sn = 0;
-    for (int32_t i = 0; i < 4; i++, p_dev_config++)
+    for (int32_t i = 0; i < 4; i++)
     {
+        is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS + sizeof(DEV_CFG_T) * i, (uint8_t *)flash_temp_buffer, sizeof(DEV_CFG_T));
+        p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
         if (p_dev_config->u_cfg.cfg.device_cfg_tag == DEVICE_CFG_FLAG)
         {
             int32_t crc = CRC16(p_dev_config, sizeof(DEV_CFG_T) - 2);
