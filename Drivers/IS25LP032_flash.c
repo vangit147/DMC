@@ -46,98 +46,67 @@ FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
 #define DEVICE_CFG_FLASH_ADDRESS 0X1000
 #define DEVICE_CFG_FLASH_SIZE 0X1000
 #define DEVICE_CFG_SIZE 0X400
-typedef __packed struct // 占用1k字节，最后2字节为CRC16校验和
+typedef __packed struct // 占用1022字节，最后2字节为CRC16校验和
 {
-    uint32_t device_cfg_tag;       // 标志
-    uint32_t device_cfg_sn;        // 每更新一次，该值加1
-    uint32_t device_cfg_reserved0; // 保留后续使用
-    uint32_t device_cfg_reserved1; // 保留后续使用
-    uint8_t log_saved_period;      // LOG保存周期，秒
-    uint8_t acc_sensor_type;       // 加速度传感器型号
-    uint8_t gyro_sensor_type;      // 陀螺仪传感器型号
-    uint8_t unused_0[1];           // 保留1字节
-    // X、Y轴加速度计装配误差
-    float offset[2];
-    // X、Y轴虚拟半径最大限制
-    double xr_limit; // 半径
-    double yr_limit; // 半径余量
-    // 陀螺仪X、Y、Z三轴的零偏
-    float gx_bias;
-    float gy_bias;
-    float gz_bias;
-    int8_t degree; // 阶数
-    // 加速度计多项式拟合系数
-    double axB0;
-    double axB1;
-    double axB2;
-    double axB3;
-    double axB4;
-    double axB5;
+    // 基础字段 (16字节)
+    uint32_t device_cfg_tag;       // 4字节
+    uint32_t device_cfg_sn;        // 4字节
+    uint32_t device_cfg_reserved0; // 4字节
+    uint32_t device_cfg_reserved1; // 4字节
 
-    double ayB0;
-    double ayB1;
-    double ayB2;
-    double ayB3;
-    double ayB4;
-    double ayB5;
+    // 配置字段 (4字节)
+    uint8_t log_saved_period;      // 1字节
+    uint8_t acc_sensor_type;       // 1字节
+    uint8_t gyro_sensor_type;      // 1字节
+    uint8_t unused_0[1];           // 1字节
 
-    double azB0;
-    double azB1;
-    double azB2;
-    double azB3;
-    double azB4;
-    double azB5;
+    // 偏移和限制 (24字节)
+    float offset[2];               // 8字节 (2 * 4)
+    double xr_limit;               // 8字节
+    double yr_limit;               // 8字节
 
-    // 陀螺仪多项式拟合系数
-    double gxB0;
-    double gxB1;
-    double gxB2;
-    double gxB3;
-    double gxB4;
-    double gxB5;
+    // 陀螺仪零偏 (13字节)
+    float gx_bias;                 // 4字节
+    float gy_bias;                 // 4字节
+    float gz_bias;                 // 4字节
+    int8_t degree;                 // 1字节
 
-    double gyB0;
-    double gyB1;
-    double gyB2;
-    double gyB3;
-    double gyB4;
-    double gyB5;
+    // 加速度计多项式拟合系数 (144字节)
+    double axB0, axB1, axB2, axB3, axB4, axB5; // 48字节 (6 * 8)
+    double ayB0, ayB1, ayB2, ayB3, ayB4, ayB5; // 48字节 (6 * 8)
+    double azB0, azB1, azB2, azB3, azB4, azB5; // 48字节 (6 * 8)
 
-    double gzB0;
-    double gzB1;
-    double gzB2;
-    double gzB3;
-    double gzB4;
-    double gzB5;
-    // x、y、z加速度计零偏
-    double bx;
-    double by;
-    double bz;
-    // MS矩阵系数
-    double mxx;
-    double mxy;
-    double mxz;
-    double myy;
-    double myz;
-    double mzz;
-    // px、py、pz数组暂时不用
-    float px[5];
-    float py[5];
-    float pz[5];
-    char pro_id[15];
-    char version[VERSION_MAX_LENGTH];
-    /* 温度补偿范围设置 */
-    float temp_comp_lower_limit; // 温度补偿下限，默认-20°C
-    float temp_comp_upper_limit; // 温度补偿上限，默认150°C
-    float t_scale;               // 温度比例系数
-    float t_intercept;           // 温度截距
-    /* 泥浆脉冲设置 */
-    mud_pulse_config_t mud_pulse_cfg; // 泥浆脉冲配置
-    /* 振动参数设置 */
-    vibration_config_t vibration_cfg; // 振动检测配置
-    /* 其他系统参数 */
-    uint32_t idle_hook_enable;      // 低功耗状态
-    float calibration_data;         // 添加校准数据变量
+    // 陀螺仪多项式拟合系数 (144字节)
+    double gxB0, gxB1, gxB2, gxB3, gxB4, gxB5; // 48字节 (6 * 8)
+    double gyB0, gyB1, gyB2, gyB3, gyB4, gyB5; // 48字节 (6 * 8)
+    double gzB0, gzB1, gzB2, gzB3, gzB4, gzB5; // 48字节 (6 * 8)
+
+    // 加速度计零偏 (24字节)
+    double bx, by, bz;             // 24字节 (3 * 8)
+
+    // MS矩阵系数 (48字节)
+    double mxx, mxy, mxz, myy, myz, mzz; // 48字节 (6 * 8)
+
+    // 数组字段 (87字节)
+    float px[5];                   // 20字节 (5 * 4)
+    float py[5];                   // 20字节 (5 * 4)
+    float pz[5];                   // 20字节 (5 * 4)
+    char pro_id[15];               // 15字节
+    char version[VERSION_MAX_LENGTH]; // 32字节 (VERSION_MAX_LENGTH = 32)
+
+    // 温度补偿设置 (16字节)
+    float temp_comp_lower_limit;   // 4字节
+    float temp_comp_upper_limit;   // 4字节
+    float t_scale;                 // 4字节
+    float t_intercept;             // 4字节
+
+    // 配置结构体 (48字节)
+    mud_pulse_config_t mud_pulse_cfg; // 20字节 (5 * uint32_t)
+    vibration_config_t vibration_cfg; // 28字节 (7个字段)
+
+    // 其他系统参数 (8字节)
+    uint32_t idle_hook_enable;     // 4字节
+    float calibration_data;        // 4字节
 } CFG_T;
 
 // 默认参数
