@@ -45,7 +45,6 @@ static TimerHandle_t lpuart2_rx_timer;
 
 static int8_t downhole;
 
-float trans_ie;
 float rpm;
 static float gz_avg = 0;
 static uint32_t avg_count = 0;
@@ -542,15 +541,6 @@ static void on_100ms_timer_event(void)
             log.c2_num_max = interval_info.c2_num_count;
             // log.c2_num_min = 0;
 
-            if (log.inc6_avg > 8)
-            {
-                trans_ie = 8;
-            }
-            else
-            {
-                trans_ie = log.inc6_avg;
-            }
-
             reset_interval_info();
             //add yq 2025.8.21 - 之前版本缺少rpm转速计算
             rpm = gz_avg / avg_count;
@@ -562,53 +552,6 @@ static void on_100ms_timer_event(void)
                 printf("Writing ONE log failed! ret=%d\r\n", ret);
         }
     }
-}
-
-/**
- *******************************************************************************
- * @Description: 查找是否收到VD下发的命令帧
- * @Parameters :
- * @RetValue   :
- * @Note       :
- * @CreatedBy  : NY
- * @CreatedDate: 2024.09.25 06:54:08 Wednesday
- *******************************************************************************
- */
-static bool check_vd_cmd(uint8_t *rx_data, uint32_t len, uint32_t *be_cleared_data)
-{
-    static const uint8_t modbus_rd_data_cmd[] = {0x10, 0x03, 0x00, 0x00, 0x00, 0x02, 0xc7, 0x4a};
-    static uint8_t data_buffer[32];
-    static uint8_t data_len;
-
-    bool found = false;
-    uint8_t *p_head = data_buffer;
-
-    __disable_irq();
-    if (len > sizeof(data_buffer) - data_len)
-        len = sizeof(data_buffer) - data_len;
-    memcpy(data_buffer + data_len, rx_data, len);
-    data_len += len;
-    if (be_cleared_data)
-        *be_cleared_data = 0;
-    __enable_irq();
-
-    while (data_len >= sizeof(modbus_rd_data_cmd))
-    {
-        p_head = data_buffer + data_len - sizeof(modbus_rd_data_cmd);
-        if (memcmp(p_head, modbus_rd_data_cmd, sizeof(modbus_rd_data_cmd)) == 0)
-        {
-            found = true;
-            data_len -= sizeof(modbus_rd_data_cmd);
-            p_head += sizeof(modbus_rd_data_cmd);
-            break;
-        }
-        data_len--;
-        p_head++;
-    }
-    if (p_head != data_buffer && data_len)
-        memmove(data_buffer, p_head, data_len);
-
-    return found;
 }
 
 void algorithm_setting_for_Calibration()
@@ -1008,19 +951,6 @@ void main_task(void *p)
                 waiting_for_uart2_timeout_tmr = 0;
             }
 
-            // 检查是否收到命令
-            if (check_vd_cmd(UART2_rx_buffer, UART2_rx_data_len, NULL))
-            {
-                printf("Received MODBUS read command!\r\n");
-                UART2_rx_data_len = 0;
-                if (waiting_for_uart2_timeout_tmr)
-                {
-                    xTimerDelete(waiting_for_uart2_timeout_tmr, 0);
-                    waiting_for_uart2_timeout_tmr = 0;
-                }
-                break;
-            }
-
             handle_uart_msg(UART2_rx_buffer, &UART2_rx_data_len);
         }
 
@@ -1052,36 +982,6 @@ void main_task(void *p)
         if (notify & EVENT_SEND_DBG_DATA_TIMER)
         {
             on_send_debug_data_event();
-        }
-
-        if (notify & EVENT_UART2_RX)
-        {
-            uint8_t temp[10];
-            int16_t temp_v;
-            uint16_t crc;
-
-            if (check_vd_cmd(UART2_rx_buffer, UART2_rx_data_len, &UART2_rx_data_len))
-            {
-                temp[0] = 0x10;
-                temp[1] = 0x03;
-                temp[2] = 4;
-                temp_v = trans_ie * 100;
-                temp[3] = temp_v >> 8;
-                temp[4] = temp_v & 0xff;
-
-                temp_v = rpm * 100 / 6;
-                if (temp_v < 0)
-                    temp_v = -temp_v;
-                if (temp_v > 10000)
-                    temp_v = 10000;
-                temp[5] = temp_v >> 8;
-                temp[6] = temp_v & 0xff;
-
-                crc = CRC16(temp, 7);
-                temp[7] = crc;
-                temp[8] = crc >> 8;
-                LPUART2_send(temp, 9);
-            }
         }
     }
 }
