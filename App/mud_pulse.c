@@ -174,7 +174,13 @@ void mud_pulse_collect_static_data(mud_pulse_t *pulse, uint8_t is_static_state)
         return;
 
     // 仅在静止状态下进行静态数据采集
-    if (is_static_state && pulse->collect.count < pulse->config.static_collection_time * 10) // 100ms定时器调用，所以乘以10
+    // 设计说明：
+    // 1. 前20秒（200次100ms调用）等待数据稳定，不收集数据
+    // 2. 实际采集时间比配置时间少10秒，避免采集到振动检测延迟期间的不稳定数据
+    // 3. 振动开关需要8秒才能检测到振动，所以检测到振动前10秒的数据是不可靠的
+    // 4. 通过提前10秒停止采集，确保采集的数据都是稳定的
+    // 示例：配置60秒采集时间，实际采集30秒有效数据（20-50秒），50-60秒停止采集
+    if (is_static_state && pulse->collect.count < (pulse->config.static_collection_time - 10) * 10) // 100ms定时器调用，所以乘以10，减去10秒
     {
         // 前20秒（200次100ms调用）等待数据稳定，只计数
         if (pulse->collect.count > 200)
@@ -203,6 +209,16 @@ void mud_pulse_collect_static_data(mud_pulse_t *pulse, uint8_t is_static_state)
             pulse->collect.avg_voltage = (pulse->collect.avg_voltage * (valid_count - 1) + pulse->collect.min_voltage) / valid_count;
         }
         pulse->collect.count++;
+    }
+    else if (!is_static_state)
+    {
+        // 检测到振动状态，如果数据还没采集够（减去10秒），清空相关变量
+        // 原因：振动检测有8秒延迟，如果数据还没采集够，说明采集的数据可能包含不稳定数据
+        // 因此需要清空重新开始，确保下次采集的数据是可靠的
+        if (pulse->collect.count < (pulse->config.static_collection_time - 10) * 10)
+        {
+            mud_pulse_init_collect(pulse);
+        }
     }
 }
 
@@ -398,7 +414,9 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
         if (!pulse->state.tx_request && pulse->state.vibration_cooldown == 0)
         {
             // --- 1. 检查静态脉冲数据是否采集完成 ---
-            if (pulse->collect.count >= pulse->config.static_collection_time * 10) // 100ms定时器调用，所以乘以10
+            // 检查数据是否已经采集够（减去10秒），确保数据是稳定的
+            // 这样可以避免发送包含振动检测延迟期间不稳定数据的静态脉冲
+            if (pulse->collect.count >= (pulse->config.static_collection_time - 10) * 10) // 100ms定时器调用，所以乘以10，减去10秒
             {
                 // --- 2. 设置发送参数 ---
                 pulse->state.current_retry_count = pulse->config.max_retry_count;  // 静态脉冲数据重传次数
