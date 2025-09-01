@@ -315,10 +315,10 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
     {
         // 定时发送：检查三个条件
         // 1. 定时周期到了（已满足）
-        // 2. 当前振动状态是振动
+        // 2. 一直处于振动状态（持续振动）
         // 3. 没有正在进行的发送（包括动态脉冲和静态脉冲）
         // 注意：动态脉冲发送可能被振动触发中断，优先级低于静态脉冲
-        if (currentMotionState && !pulse->state.tx_request && !pulse->state.timer_triggered)
+        if (pulse->state.last_motion_state == 1 && currentMotionState == 1 && !pulse->state.tx_request && !pulse->state.timer_triggered)
         {
             // 三个条件都满足，直接执行动态脉冲发送
             // --- 1. 设置发送参数 ---
