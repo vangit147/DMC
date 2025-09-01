@@ -52,6 +52,7 @@ typedef __packed struct
     uint32_t vibration_cooldown;    // 振动冷却计时器
     uint8_t tx_started;             // 发送启动标志
     uint8_t timer_triggered;        // 动态脉冲定时发送触发标志
+    uint8_t last_motion_state;      // 上一次的运动状态，用于检测状态变化
 } mud_pulse_state_t;
 
 // 泥浆脉冲数据结构体

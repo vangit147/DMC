@@ -61,7 +61,6 @@ void start_and_get_adc_result(void)
 {
     uint16_t u16_ADC_raw_result;
 
-    ADC_DRV_ConfigChan(INST_ADCONV1, 0, &adConv1_ChnConfig0);
     ADC_DRV_WaitConvDone(INST_ADCONV1);
     ADC_DRV_GetChanResult(INST_ADCONV1, 0, &u16_ADC_raw_result);
 
@@ -317,6 +316,7 @@ static int32_t init_on_board_peripheral(void)
 
     ADC_DRV_ConfigConverter(INST_ADCONV1, &adConv1_ConvConfig0);
     ADC_DRV_AutoCalibration(INST_ADCONV1);
+    ADC_DRV_ConfigChan(INST_ADCONV1, 0, &adConv1_ChnConfig0);
 
     return 0;
 }
@@ -373,7 +373,7 @@ static void on_100ms_timer_event(void)
 {
     static uint32_t rtc_timeout = 0;
     static uint32_t last_timestamp = 0;
-    static uint32_t log_period = 5;
+    static uint32_t log_period = 0;
     // static uint32_t interrupt_test_counter = 0; // 添加中断测试计数器
     uint32_t timestamp;
     uint8_t rtc_data[8];
@@ -392,8 +392,6 @@ static void on_100ms_timer_event(void)
 
     timestamp = mktime(&time_data) - 3600 * 8; // ZONE 8
 
-    // 调用get_sensor_data函数获取传感器数据
-    get_sensor_data(&sensor_data);
     gz_avg += sensor_data.gz_dps;
     avg_count++;
 
@@ -999,7 +997,6 @@ void main_task(void *p)
         }
         if (downhole > 0 && xTaskGetTickCount() - start_ticket > 20 * 1000)
         {
-            set_downhole(2);
             break;
         }
 

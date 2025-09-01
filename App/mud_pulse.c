@@ -44,27 +44,26 @@ int32_t mud_pulse_start_tx(mud_pulse_t *pulse)
     return 0;
 }
 
-// 更新led状态
-void update_led_state()
+// 更新状态
+void mud_pulse_update_state(mud_pulse_t *pulse)
 {
     static uint8_t led;
     static uint32_t counter;
 
-    counter++;
-    // 默认pulse->config.timer_hz = 100
-    if (counter >= 100 / 10)
-    {
-        counter = 0;
-        led ^= 1;
-        PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, led);
-    }
-}
-
-// 更新状态
-void mud_pulse_update_state(mud_pulse_t *pulse)
-{
     if (!pulse || pulse->state.tx_started == 0)
         return;
+
+    if(pulse->state.timer_triggered || pulse->state.tx_request)
+    {
+        counter++;
+        // 默认pulse->config.timer_hz = 100
+        if (counter >= 100 / 10)
+        {
+            counter = 0;
+            led ^= 1;
+            PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, led);
+        }
+    }
 
     /*当前脉冲未发送完毕*/
     if (pulse->data.curr_duration > 1)
@@ -84,35 +83,30 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
         // 发送完成后，立即将引脚设置为低电平，确保解码软件能正确解码最后一个脉冲
         // 这个低电平状态将在重传间隔期间保持不变
         pulse->data.curr_index = 0;
-        pulse->data.curr_duration = INT_MAX;
 
-        // 检查是否需要重传（根据current_retry_count判断脉冲类型）
-        if (pulse->state.current_retry_count == 0)
-        {
+        if (pulse->state.timer_triggered)
             // 动态脉冲数据：不重传，直接完成
-            pulse->state.tx_request = 0;
             // 重置动态脉冲定时发送标志（在完整发送完成后）
             pulse->state.timer_triggered = 0;
-            // 启动振动冷却期（防止立即重新触发）
-            pulse->state.vibration_cooldown = MUD_PULSE_VIBRATION_COOLDOWN_SECONDS; // 振动冷却期（每秒递减1）
-        }
-        else
+
+        if (pulse->state.tx_request)
         {
             // 静态脉冲数据：需要重传机制
             pulse->state.current_retry_count--;
             if (pulse->state.current_retry_count == 0)
-            {
                 // 静态脉冲重传次数用完，发送完成
                 pulse->state.tx_request = 0;
-                // 启动振动冷却期（防止立即重新触发）
-                pulse->state.vibration_cooldown = MUD_PULSE_VIBRATION_COOLDOWN_SECONDS; // 振动冷却期（每秒递减1）
-            }
             else
-            {
                 // 还有静态脉冲重传次数，启动重传间隔
                 // 静态脉冲重传间隔：每次完整脉冲传输完毕后等待指定时间再重传
                 pulse->data.curr_duration = pulse->config.retry_interval * pulse->config.timer_hz;
-            }
+        }
+
+        if (!pulse->state.timer_triggered && !pulse->state.tx_request)
+        {
+            pulse->data.curr_duration = INT_MAX;
+            // 启动振动冷却期（防止立即重新触发）
+            pulse->state.vibration_cooldown = MUD_PULSE_VIBRATION_COOLDOWN_SECONDS; // 振动冷却期（每秒递减1）
         }
     }
     // 更新引脚状态
@@ -122,9 +116,6 @@ void mud_pulse_update_state(mud_pulse_t *pulse)
 // 定时器中断处理
 void mud_pulse_timer_isr(mud_pulse_t *pulse)
 {
-    if (get_downhole() == 2)
-        update_led_state();
-
     if (!pulse)
         return;
 
@@ -278,6 +269,7 @@ void mud_pulse_init(mud_pulse_t *pulse)
     pulse->state.vibration_cooldown = 0;
     pulse->state.tx_started = 0;
     pulse->state.timer_triggered = 0;  // 动态脉冲定时发送触发标志
+    pulse->state.last_motion_state = 0;  // 初始化为静止状态
 
     // 初始化数据
     pulse->data.curr_duration = 0;
@@ -315,7 +307,6 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
             // 三个条件都满足，直接执行动态脉冲发送
             // --- 1. 设置发送参数 ---
             // 动态脉冲定时发送：不设置重传机制，直接发送一次
-            pulse->state.current_retry_count = 0;  // 动态脉冲数据不重传
 
             // --- 2. 获取实时传感器数据 ---
             float real_time_ie = interval_info.good_inc_avg;
@@ -389,11 +380,18 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
 
     // ===== 第四阶段：发送执行（并列关系） =====
     // ===== 振动触发静态脉冲发送：独立于动态脉冲定时发送 =====
-    if (currentMotionState)
+
+    // 检测由静止到振动的状态变化
+    uint8_t motion_state_changed = (pulse->state.last_motion_state == 0 && currentMotionState == 1);
+
+    // 更新上一次的运动状态
+    pulse->state.last_motion_state = currentMotionState;
+
+    if (motion_state_changed)
     {
         // --- 振动触发条件检查 ---
         // 振动触发静态脉冲发送优先级最高，需要检查三个条件：
-        // 1. 检测到振动（currentMotionState为真）
+        // 1. 检测到由静止到振动的状态变化（motion_state_changed为真）
         // 2. 振动冷却期结束（vibration_cooldown == 0）
         // 3. 没有静态脉冲正在发送（!tx_request）
         // 注意：静态脉冲数据采集完成后直接发送，会覆盖任何正在进行的动态脉冲发送
@@ -466,6 +464,8 @@ void mud_pulse_update_data(mud_pulse_t *pulse, uint8_t currentMotionState)
             }
         }
         // --- 重置静态脉冲数据采集 ---
+        // 只有在检测到由静止到振动的状态变化时，才重置数据采集
+        // 这样可以避免在持续振动过程中重复重置数据采集
         mud_pulse_init_collect(pulse);
         // 如果静态脉冲数据未采集完成，继续采集但不发送
         // 这样可以确保振动检测立即响应，但发送需要等待数据准备完成
