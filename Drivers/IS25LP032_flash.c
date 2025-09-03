@@ -1,7 +1,7 @@
 /**
  *****************************************************************************
  * FILENAME   : IS25LP032_flash.c
- * COPYRIGHT  : XXXX(ShangHai) Co.,Ltd2023.
+ * COPYRIGHT  : Moding Tech(ShangHai) Co.,Ltd2023.
  * CREATEDDATE: 2023.10.04 09:57:51 Wednesday
  * DESCRIPTION:
  *
@@ -13,16 +13,31 @@
  */
 /************* Included files, Macros, Various and Declarations ***************/
 #include "IS25LP032_flash.h"
-#include "mud_pulse.h"
 
-#define FLASH_PP 0X02
-#define FLASH_RDSR 0X05
-#define FLASH_WREN 0X06
-#define FLASH_NORD 0X03
-#define FLASH_RDMDID 0X90
-#define FLASH_SER 0XD7
+#define FLASH_PP 0X02   //页编程
+#define FLASH_RDSR 0X05 //读状态寄存器
+#define FLASH_WREN 0X06 //写使能
+#define FLASH_NORD 0X03 //读数据
+#define FLASH_RDMDID 0X90 //读制造商和设备ID
+#define FLASH_SER 0XD7 //串行
+/**
+ * Flash临时缓冲区大小定义
+ *
+ * 重要说明：
+ * 1. 此值必须足够大，能够容纳最大的结构体 DEV_CFG_T (1024字节)
+ * 2. 由于 flash_temp_buffer 是 uint64_t 数组，实际字节大小 = 256 * 8 = 2048字节
+ * 3. 最小安全值计算：1024字节 ÷ 8字节 = 128，因此当前设置256是安全的
+ *
+ * 结构体大小参考：
+ * - DEV_CFG_T: 1024字节 (最大，决定最小安全值)
+ * - total_runtime_record_t: 32字节
+ * - log_context_t: 16字节
+ *
+ * 注意：如果修改此值，必须确保 >= 128，否则设备配置读取将失效
+ */
+#define FLASH_TEMP_BUFFER_SIZE 256
 
-static uint64_t  flash_temp_buffer[178];    //2K读写缓冲区 (从512减少到178) 25/08/26 Gordon
+static uint64_t  flash_temp_buffer[FLASH_TEMP_BUFFER_SIZE];    //2K读写缓冲区 (从512减少到256)
 
 /*
 FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
@@ -35,7 +50,7 @@ FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
 +--------------------------+
 |     LOG CONTEXT    (8K)  | 0x00004000 - 0x00005FFF
 +--------------------------+
-|          LOG             | 0x00006000 - 0x3FFFFFFF (约23,425条日志，每条178字节)
+|          LOG             | 0x00006000 - 0x3FFFFFFF (约33,828条日志，每条124字节)
 +--------------------------+
 
 */
@@ -49,23 +64,22 @@ FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
 typedef __packed struct // 占用1022字节，最后2字节为CRC16校验和
 {
     // 基础字段 (16字节)
-    uint32_t device_cfg_tag;       // 4字节
-    uint32_t device_cfg_sn;        // 4字节
-    uint32_t device_cfg_reserved0; // 4字节
-    uint32_t device_cfg_reserved1; // 4字节
+    uint32_t device_cfg_tag;       // 标志
+    uint32_t device_cfg_sn;        // 每更新一次，该值加1
+    uint32_t device_cfg_reserved0; // 保留后续使用
+    uint32_t device_cfg_reserved1; // 保留后续使用
 
     // 配置字段 (4字节)
-    uint8_t log_saved_period;      // 1字节
+    uint16_t log_saved_period;      // LOG保存周期，秒
     uint8_t acc_sensor_type;       // 1字节
     uint8_t gyro_sensor_type;      // 1字节
-    uint8_t unused_0[1];           // 1字节
 
-    // 偏移和限制 (24字节)
+    // 加速度计装配误差和虚拟半径限制 (24字节)
     float offset[2];               // 8字节 (2 * 4)
     double xr_limit;               // 8字节
     double yr_limit;               // 8字节
 
-    // 陀螺仪零偏 (13字节)
+    // 陀螺仪零偏 (13字节)与补偿函数阶数
     float gx_bias;                 // 4字节
     float gy_bias;                 // 4字节
     float gz_bias;                 // 4字节
@@ -81,13 +95,13 @@ typedef __packed struct // 占用1022字节，最后2字节为CRC16校验和
     double gyB0, gyB1, gyB2, gyB3, gyB4, gyB5; // 48字节 (6 * 8)
     double gzB0, gzB1, gzB2, gzB3, gzB4, gzB5; // 48字节 (6 * 8)
 
-    // 加速度计零偏 (24字节)
-    double bx, by, bz;             // 24字节 (3 * 8)
+    // 加速度计零偏 (12字节)
+    float bx, by, bz;             // 12字节 (3 * 4)
 
     // MS矩阵系数 (48字节)
     double mxx, mxy, mxz, myy, myz, mzz; // 48字节 (6 * 8)
 
-    // 数组字段 (87字节)
+    // 数组字段 (107字节)
     float px[5];                   // 20字节 (5 * 4)
     float py[5];                   // 20字节 (5 * 4)
     float pz[5];                   // 20字节 (5 * 4)
@@ -100,28 +114,32 @@ typedef __packed struct // 占用1022字节，最后2字节为CRC16校验和
     float t_scale;                 // 4字节
     float t_intercept;             // 4字节
 
-    // 配置结构体 (48字节)
-    mud_pulse_config_t mud_pulse_cfg; // 20字节 (5 * uint32_t)
-    vibration_config_t vibration_cfg; // 28字节 (7个字段)
+    // 脉冲传输配置(12字节)
+    uint16_t pump_delay1;  										//停泵状态下的静态井斜前置延迟时间,单位秒,默认为10秒
+    uint16_t pump_delay2;	 									//停泵状态下的静态井斜前置延迟时间,单位秒,默认为10秒
+    uint32_t pulse_retry_for_pump_off_data; 			        //开泵后对停泵状态下静态井斜的重传次数
+    uint32_t pulse_interval_for_pump_off_data; 		            //开泵后对停泵状态下静态井斜的重传时间间隔，秒
+    uint32_t pulse_interval;									//正常开泵情况下的泥浆脉冲时间传输时间间隔，秒
 
     // 其他系统参数 (8字节)
     uint32_t idle_hook_enable;     // 4字节
     float calibration_data;        // 4字节
 } CFG_T;
 
-// 默认参数
+// 默认参数：硬编码的默认配置值
 static const CFG_T default_cfg = {
     .device_cfg_tag = DEVICE_CFG_FLAG,
     .device_cfg_sn = 1,
     .device_cfg_reserved0 = 0,
     .device_cfg_reserved1 = 0,
+    // 配置字段
     .log_saved_period = 60,
     .acc_sensor_type = 1,  // 默认使用VS1005加速度计
     .gyro_sensor_type = 0, // 默认使用IAM-20680HT陀螺仪
-    .unused_0 = {0},
+
     .offset = {0.0f, 0.0f},
-    .xr_limit = 0.13f,
-    .yr_limit = 0.1f,
+    .xr_limit = 0.01f,
+    .yr_limit = 0.001f,
     .gx_bias = 0.0f,
     .gy_bias = 0.0f,
     .gz_bias = 0.0f,
@@ -157,23 +175,11 @@ static const CFG_T default_cfg = {
     .t_scale = -0.000164327854f,
     .t_intercept = 321.9705002,
     /* 泥浆脉冲设置 */
-    .mud_pulse_cfg = {
-        .timer_hz = 100,              // 100Hz定时器频率
-        .retry_interval = MUD_PULSE_DEFAULT_RETRY_INTERVAL,         // 默认静态脉冲数据重传时间间隔
-        .max_retry_count = MUD_PULSE_DEFAULT_MAX_RETRY_COUNT,       // 默认静态脉冲数据重传次数
-        .static_collection_time = MUD_PULSE_DEFAULT_STATIC_COLLECTION_TIME, // 默认静态脉冲数据采集时间
-        .auto_send_period = MUD_PULSE_DEFAULT_AUTO_SEND_PERIOD,     // 默认动态脉冲数据周期性上传时间
-    },
-    /* 振动参数设置 */
-    .vibration_cfg = {
-        .threshold = DEFAULT_VIBRATION_THRESHOLD,         // 振动阈值 - 上位机命令: VT=?
-        .vibration_source = VIBRATION_DEFAULT_SOURCE,             // 振动检测源选择 - 上位机命令: VS=?
-        .delta_threshold = DEFAULT_VIBRATION_DELTA_THRESHOLD,      // 差值检测阈值 - 上位机命令: DT=?
-        .rms_threshold = VIBRATION_DEFAULT_RMS_THRESHOLD,         // RMS检测阈值 - 上位机命令: DR=?
-        .norm = DEFAULT_NORM_VALUE,                      // NORM值 - 上位机命令: VN=?
-        .delta_trigger_ratio = DEFAULT_DELTA_TRIGGER_RATIO,       // 差值触发次数比例 - 上位机命令: DTR=?
-        .rms_trigger_ratio = DEFAULT_RMS_TRIGGER_RATIO,           // RMS触发次数比例 - 上位机命令: RTR=?
-    },
+    .pump_delay1 = 8,
+    .pump_delay2 = 12,
+    .pulse_retry_for_pump_off_data = 3,
+    .pulse_interval_for_pump_off_data = 1200,
+    .pulse_interval = 3600,
     /* 其他系统参数 */
     .idle_hook_enable = 0,      // 低功耗状态
     .calibration_data = 0.0f    // 校准数据变量
@@ -240,10 +246,10 @@ static int32_t is25pl032_flash_save_runtime_record(total_runtime_record_t *recor
 /******************************** Functions **********************************/
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:日志上下文更新
   * @Parameters :
-  * @RetValue   :
-  * @Note       :
+  * @RetValue   :0表示成功，-1表示失败
+  * @Note       :将内存中的日志上下文信息保存到Flash存储器中
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.10.14 23:59:05 Saturday
@@ -281,10 +287,10 @@ static int32_t is25pl032_flash_update_context(void)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:重置日志读取索引
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :将日志读取位置重置到最新记录的位置
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.10.15 00:02:01 Sunday
@@ -297,7 +303,7 @@ int32_t is25pl032_flash_reset_rd_index(void)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:删除所有日志记录
   * @Parameters :
   * @RetValue   :
   * @Note       :
@@ -315,10 +321,10 @@ int32_t is25pl032_flash_delete_all_log(void)
 
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:读取单条日志记录
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :从Flash存储器中按顺序读取日志数据
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 22:35:19 Wednesday
@@ -333,7 +339,7 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 
         rd_index = log_context.log_write_index + 1 - log_context.log_to_be_read_count;
         log_context.log_to_be_read_count--;
-        // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约23,425条日志)
+        // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约33,628条日志)
         if (rd_index < 0)
             rd_index += LOG_FLASH_SIZE / sizeof(log_t);
         flash_address += sizeof(log_t) * rd_index;
@@ -391,19 +397,14 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
    *               关键范围值含义：
  *               - LOG_FLASH_ADDRESS: 0x00006000 (日志数据起始地址)
  *               - LOG_FLASH_SIZE: 0x3FA00000 (4,169,728字节，实际日志存储空间)
- *               - LOG_FLASH_SIZE / sizeof(log_t): 约23,425条日志记录 (每条日志178字节)
+ *               - LOG_FLASH_SIZE / sizeof(log_t): 约33,628条日志记录 (每条日志124字节)
  *               - 日志结构体详细组成：
  *                 * 基础信息: 8字节 (时间戳、保留字段)
  *                 * 传感器数据: 24字节 (三轴加速度、三轴角速度)
  *                 * 倾角数据: 36字节 (倾角1/2/6的最大/最小/平均值)
  *                 * 虚拟半径数据: 16字节 (X/Y半径最小/最大值)
  *                 * 系统状态数据: 20字节 (高边、Z轴角速度统计、温度)
- *                 * 时间相关数据: 8字节 (转速、时间差)
- *                 * 统计计算数据: 20字节 (标准差、平均值等)
- *                 * 振动检测数据: 28字节 (振动统计、标志、计数)
- *                 * 计数器数据: 24字节 (3个计数器的最大/最小值)
- *                 * 平静时间数据: 10字节 (平静时间统计)
- *                 * 电源和校验数据: 8字节 (电池电压、CRC16)
+ *                 * 统计计算和电源数据: 20字节 (标准差、标志位、电池电压、CRC16)
  *               - 日志采用循环缓冲区，当写满后覆盖最早的记录
 
   * @CreatedBy  : YangHaifeng
@@ -422,15 +423,14 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
     // 增加延时确保中断完全禁用
     vTaskDelay(1);
 
-    log->crc16 = CRC16(log, sizeof(log_t) - 2);
+    log->crc16 = CRC16(log, sizeof(log_t) - 2); // 计算日志数据CRC16校验码，排除最后两字节的CRC字段本身
     for (i = 0; i < 3; i++)
     {
         uint32_t flash_wr_address = LOG_FLASH_ADDRESS;
         log_t log_rd;
 
         log_context.log_write_index++;
-        // if(log_context.log_write_index >= log_context.log_total_count > LOG_FLASH_SIZE / sizeof(log_t))
-        if (log_context.log_write_index >= LOG_FLASH_SIZE / sizeof(log_t))
+        if (log_context.log_write_index >= LOG_FLASH_SIZE / sizeof(log_t)) //循环写入
             log_context.log_write_index = 0;
         flash_wr_address += log_context.log_write_index * sizeof(log_t);
         is25pl032_flash_normal_write(flash_wr_address, (uint8_t *)log, sizeof(log_t));
@@ -450,7 +450,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
 
     // 成功写入一条log
     log_context.log_total_count++;
-    // 限制总日志数量不超过最大容量 (约23,425条)
+    // 限制总日志数量不超过最大容量 (约33,628条)
     if (log_context.log_total_count > LOG_FLASH_SIZE / sizeof(log_t))
         log_context.log_total_count = LOG_FLASH_SIZE / sizeof(log_t);
     log_context.log_to_be_read_count++;
@@ -468,7 +468,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         if (log_context_index >= LOG_CONTEXT_FLASH_SIZE / sizeof(log_context_t))
             log_context_index = 0;
         flash_wr_address += log_context_index * sizeof(log_context_t);
-
+        //写入日志上下文context
         is25pl032_flash_normal_write(flash_wr_address, (uint8_t *)&log_context, sizeof(log_context_t));
 
         // READ BACK
@@ -535,10 +535,10 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:读取Flash状态寄存器
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :获取IS25LP032 Flash芯片的当前状态信息
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 10:56:01 Wednesday
@@ -555,11 +555,10 @@ int32_t is25pl032_flash_read_status(void)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:擦除Flash扇区
   * @Parameters :
   * @RetValue   :
-  * @Note       :
-
+  * @Note       :擦除IS25LP032 Flash芯片中指定地址的4KB扇区
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 11:22:33 Wednesday
   *******************************************************************************
@@ -620,10 +619,10 @@ int32_t is25pl032_flash_erase_sector(uint32_t address, uint32_t check_empty)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:读取Flash芯片ID
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :FLASH_RDMDID：定义为 0x90，这是Flash的"Read Manufacturer/Device ID"命令
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 11:00:09 Wednesday
@@ -634,15 +633,15 @@ int32_t is25pl032_flash_read_id(void)
     uint8_t cmd_data[8];
 
     cmd_data[0] = FLASH_RDMDID;
-    spi0_cs0_transfer(cmd_data, cmd_data, 6);
-    return cmd_data[3] << 16 | cmd_data[4] << 8 | cmd_data[5];
+    spi0_cs0_transfer(cmd_data, cmd_data, 6);//SPI0接口的CS0片选传输函数
+    return cmd_data[3] << 16 | cmd_data[4] << 8 | cmd_data[5];//接收到的3字节ID数据组合成24位整数
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:页内写入Flash
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :向Flash的指定页面写入数据
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.12.15 23:10:55 Friday
@@ -650,8 +649,8 @@ int32_t is25pl032_flash_read_id(void)
   */
 static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *data, uint32_t len)
 {
-    uint32_t cmd_address_data[260 / 4];
-    uint8_t *p_cmd_address = (uint8_t *)cmd_address_data;
+    uint32_t cmd_address_data[260 / 4];// 65个32位整数
+    uint8_t *p_cmd_address = (uint8_t *)cmd_address_data;//将32位数组转换为8位指针，便于操作
     uint8_t wren_reg;
     uint8_t timeout;
 
@@ -692,7 +691,7 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
 
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:页写入Flash的函数，用于处理跨页边界的数据写入，自动管理Flash页面的写入操作
   * @Parameters :
   * @RetValue   :
   * @Note       :
@@ -816,10 +815,10 @@ static int32_t is25pl032_flash_write_page(uint32_t flash_address, uint8_t *data,
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:通用Flash写入函数
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :向Flash写入任意长度的数据，自动处理扇区擦除、页写入等操作
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 10:48:29 Wednesday
@@ -868,10 +867,10 @@ int32_t is25pl032_flash_normal_write(uint32_t flash_address, uint8_t *data_buffe
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:通用Flash读取函数
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :从Flash读取任意长度的数据，自动处理页读取等操作
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 10:33:07 Wednesday
@@ -913,10 +912,10 @@ int32_t is25pl032_flash_normal_read(uint32_t flash_address, uint8_t *data_buffer
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:保存设备配置的函数
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :将内存中的设备配置数据保存到Flash存储器，支持配置版本管理和循环存储
 
   * @CreatedBy  : YangHaifeng
   * @CreatedDate: 2023.10.04 15:49:36 Wednesday
@@ -926,22 +925,10 @@ int32_t is25pl032_flash_save_dev_cfg(void)
 {
     DEV_CFG_T *p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
 
-    // Flash操作前仅禁用ADXL357中断（防止SPI冲突）
-    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
-    adxl357_host_mode_interrupt_control(false);
-    #endif
-
-    // 增加延时确保中断完全禁用
-    vTaskDelay(1);
-
     is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS + sizeof(dev_cfg) * dev_cfg_index,
                                 (uint8_t *)flash_temp_buffer, sizeof(dev_cfg));
     if (memcmp(p_dev_config, &dev_cfg, sizeof(dev_cfg)) == 0)
     {
-        // 数据相同，无需保存，重新启用ADXL357中断
-        #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
-        adxl357_host_mode_interrupt_control(true);
-        #endif
         return 0;
     }
 
@@ -959,15 +946,11 @@ int32_t is25pl032_flash_save_dev_cfg(void)
 
     load_algorithm_setting_from_flash();
 
-    // Flash操作后重新启用ADXL357中断
-    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
-    adxl357_host_mode_interrupt_control(true);
-    #endif
     return 0;
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:Flash存储系统的初始化函数
   * @Parameters :
   * @RetValue   :
   * @Note       :
@@ -1005,22 +988,29 @@ int32_t is25pl032_flash_init(void)
         is25pl032_flash_normal_write(0, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
     }
 
-    // 检查参数
+    // 检查参数 - 使用动态计算替代硬编码
     dev_cfg_max_sn = 0;
-    for (int32_t i = 0; i < 4; i++)
+    uint32_t dev_cfg_buffer_count = DEVICE_CFG_FLASH_SIZE / sizeof(flash_temp_buffer);
+    for (uint32_t i = 0; i < dev_cfg_buffer_count; i++)
     {
-        is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS + sizeof(DEV_CFG_T) * i, (uint8_t *)flash_temp_buffer, sizeof(DEV_CFG_T));
-        p_dev_config = (DEV_CFG_T *)flash_temp_buffer;
-        if (p_dev_config->u_cfg.cfg.device_cfg_tag == DEVICE_CFG_FLAG)
+        is25pl032_flash_normal_read(DEVICE_CFG_FLASH_ADDRESS + sizeof(flash_temp_buffer) * i, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
+
+        // 计算在当前buffer中能容纳多少个DEV_CFG_T结构体
+        uint32_t max_dev_cfg_count = sizeof(flash_temp_buffer) / sizeof(DEV_CFG_T);
+        for (uint32_t j = 0; j < max_dev_cfg_count; j++)
         {
-            int32_t crc = CRC16(p_dev_config, sizeof(DEV_CFG_T) - 2);
-            if (crc == p_dev_config->crc16)
+            p_dev_config = (DEV_CFG_T *)flash_temp_buffer + j;
+            if (p_dev_config->u_cfg.cfg.device_cfg_tag == DEVICE_CFG_FLAG)
             {
-                if (p_dev_config->u_cfg.cfg.device_cfg_sn > dev_cfg_max_sn)
+                int32_t crc = CRC16(p_dev_config, sizeof(DEV_CFG_T) - 2);
+                if (crc == p_dev_config->crc16)
                 {
-                    dev_cfg_max_sn = p_dev_config->u_cfg.cfg.device_cfg_sn;
-                    dev_cfg_index = i;
-                    dev_cfg = *p_dev_config;
+                    if (p_dev_config->u_cfg.cfg.device_cfg_sn > dev_cfg_max_sn)
+                    {
+                        dev_cfg_max_sn = p_dev_config->u_cfg.cfg.device_cfg_sn;
+                        dev_cfg_index = i;
+                        dev_cfg = *p_dev_config;
+                    }
                 }
             }
         }
@@ -1037,17 +1027,20 @@ int32_t is25pl032_flash_init(void)
         is25pl032_flash_normal_write(DEVICE_CFG_FLASH_ADDRESS, (uint8_t *)flash_temp_buffer, sizeof(dev_cfg));
     }
 
-    // 确定运行时间最后记录
-    for (int i = 0, j = 0; i < 2; i++)
+    // 确定运行时间最后记录 - 使用动态计算替代硬编码
+    uint32_t runtime_buffer_count = TOTAL_RUNTIME_FLASH_SIZE / sizeof(flash_temp_buffer);
+    for (uint32_t i = 0, j = 0; i < runtime_buffer_count; i++)
     {
         uint16_t crc;
 
-        is25pl032_flash_normal_read(TOTAL_RUNTIME_FLASH_ADDRESS + 0x1000 * i, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
+        is25pl032_flash_normal_read(TOTAL_RUNTIME_FLASH_ADDRESS + sizeof(flash_temp_buffer) * i, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
         p_runtime_record = (total_runtime_record_t *)flash_temp_buffer;
 
-        for (p_runtime_record = (total_runtime_record_t *)flash_temp_buffer; (uint32_t)p_runtime_record < (uint32_t)flash_temp_buffer + 0x1000;
-             p_runtime_record++, j++)
+        // 计算在当前buffer中能容纳多少个total_runtime_record_t结构体
+        uint32_t max_runtime_count = sizeof(flash_temp_buffer) / sizeof(total_runtime_record_t);
+        for (uint32_t k = 0; k < max_runtime_count; k++)
         {
+            p_runtime_record = (total_runtime_record_t *)flash_temp_buffer + k;
             if (p_runtime_record->magic != TOTAL_RUNTIME_FLAG)
                 continue;
             crc = CRC16(p_runtime_record, sizeof(*p_runtime_record) - 2);
@@ -1071,18 +1064,22 @@ int32_t is25pl032_flash_init(void)
         last_run_time_flash_address = (total_runtime_record_t *)TOTAL_RUNTIME_FLASH_ADDRESS;
     }
 
-    // 检查LOG上下文
+    // 检查LOG上下文 - 使用动态计算替代硬编码
     log_context.log_tag = LOG_CONTEXT_TAG;
     log_context.log_write_index = -1;
     log_conext_max_sn = 0;
-    for (int i = 0; i < 2; i++)
+    uint32_t log_context_buffer_count = LOG_CONTEXT_FLASH_SIZE / sizeof(flash_temp_buffer);
+    for (uint32_t i = 0; i < log_context_buffer_count; i++)
     {
         log_context_t *p_log_context;
 
         p_log_context = (log_context_t *)flash_temp_buffer;
-        is25pl032_flash_normal_read(LOG_CONTEXT_FLASH_ADDRESS + 0x1000 * i, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
-        for (int32_t j = 0; (uint32_t)p_log_context < (uint32_t)flash_temp_buffer + sizeof(flash_temp_buffer); p_log_context++, j++)
+        is25pl032_flash_normal_read(LOG_CONTEXT_FLASH_ADDRESS + sizeof(flash_temp_buffer) * i, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
+        // 计算在当前buffer中能容纳多少个log_context_t结构体
+        uint32_t max_log_context_count = sizeof(flash_temp_buffer) / sizeof(log_context_t);
+        for (uint32_t j = 0; j < max_log_context_count; j++)
         {
+            p_log_context = (log_context_t *)flash_temp_buffer + j;
             int32_t crc;
 
             if (p_log_context->log_tag != LOG_CONTEXT_TAG)
@@ -1095,7 +1092,7 @@ int32_t is25pl032_flash_init(void)
 
             log_conext_max_sn = p_log_context->log_context_sn;
             log_context = *p_log_context;
-            log_context_index = j + i * 0x1000 / 16;
+            log_context_index = j + i * sizeof(flash_temp_buffer) / sizeof(log_context_t);
         }
     }
 
@@ -1105,10 +1102,10 @@ int32_t is25pl032_flash_init(void)
 
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:设置日志保存周期
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :设置设备配置中的日志保存周期
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.10.15 15:25:04 Sunday
@@ -1123,10 +1120,10 @@ uint32_t is25pl032_flash_set_log_period(uint8_t period)
 
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:获取日志保存周期
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :获取设备配置中的日志保存周期
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.10.15 15:23:34 Sunday
@@ -1138,10 +1135,10 @@ uint32_t is25pl032_flash_get_log_period(void)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:重置设备配置
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :将设备配置重置为默认配置，并更新设备配置的序列号
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.12.14 22:02:22 Thursday
@@ -1157,10 +1154,10 @@ uint32_t is25pl032_flash_reset_cfg(void)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:设置偏移量
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :设置设备配置中的偏移量
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.12.14 22:19:27 Thursday
@@ -1184,10 +1181,10 @@ void is25pl032_flash_set_offset(uint32_t index, float d)
 // }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:获取偏移量
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :获取设备配置中的偏移量
 
   * @CreatedBy  : YuQiang
   * @CreatedDate: 2023.12.27
@@ -1207,10 +1204,10 @@ float is25pl032_flash_get_offset(uint32_t index)
 // }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:获取不同温度下的运行时间记录
   * @Parameters :
   * @RetValue   :
-  * @Note       :
+  * @Note       :获取设备配置中的运行时间记录
 
   * @CreatedBy  : NickYang
   * @CreatedDate: 2023.12.14 22:30:53 Thursday
@@ -1302,7 +1299,7 @@ void is25pl032_flash_get_pz(float *b)
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:保存运行时间记录
   * @Parameters :
   * @RetValue   :
   * @Note       :
@@ -1323,7 +1320,7 @@ static int32_t is25pl032_flash_save_runtime_record(total_runtime_record_t *recor
 }
 /**
   *******************************************************************************
-  * @Description:
+  * @Description:更新不同温度下的运行时间记录
   * @Parameters :
   * @RetValue   :
   * @Note       :
@@ -1354,14 +1351,14 @@ void update_total_time_per_temp(float temp)
     }
 }
 
-void is25pl032_flash_set_param(uint8_t accfir, uint8_t gyrofir, double xr_limit, double yr_limit, double gain)
+void is25pl032_flash_set_param(double xr_limit, double yr_limit)
 {
     dev_cfg.u_cfg.cfg.xr_limit = xr_limit;
     dev_cfg.u_cfg.cfg.yr_limit = yr_limit;
     is25pl032_flash_save_dev_cfg();
 }
 
-void is25pl032_flash_get_param(uint8_t *accfir, uint8_t *gyrofir, double *xr_limit, double *yr_limit, double *gain)
+void is25pl032_flash_get_param(double *xr_limit, double *yr_limit)
 {
     *xr_limit = dev_cfg.u_cfg.cfg.xr_limit;
     *yr_limit = dev_cfg.u_cfg.cfg.yr_limit;
@@ -1497,112 +1494,7 @@ void is25pl032_flash_get_version(char *version)
     // 复制TGDMC字符串，使用strcpy确保完整复制
     strcpy(version, TGDMC);
 }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
 
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:15:18 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_b2_kp(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_b2_kp;
-// }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:16:21 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_b3_ki(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_b3_ki;
-// }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:16:37 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_b4_limiting(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_b4_limiting;
-// }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:17:05 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_b5_max_rating(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_b5_max_rating;
-// }
-
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:32:13 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_acc_zero_offset_x(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_acc_offset_x;
-// }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:32:33 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_acc_zero_offset_y(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_acc_offset_y;
-// }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.23 23:32:51 Friday
-  *******************************************************************************
-  */
-// float get_iam_20680ht_acc_zero_offset_z(void)
-//{
-//     return dev_cfg.u_cfg.cfg.iam_20680ht_acc_offset_z;
-// }
 /**
  *******************************************************************************
  * @Description: 获取陀螺仪X轴零偏
@@ -1729,6 +1621,76 @@ int32_t set_temp_comp_upper_limit(float limit)
     dev_cfg.u_cfg.cfg.temp_comp_upper_limit = limit;
     return is25pl032_flash_save_dev_cfg();
 }
+
+/**
+ *******************************************************************************
+ * @Description: 获取停泵状态下的静态井斜前置延迟时间1
+ * @Parameters : 无
+ * @RetValue   : 延迟时间（秒）
+ * @Note       : 获取停泵状态下静态井斜前置延迟时间1的配置值
+ *               默认为8秒，用于控制停泵后多久开始记录静态井斜数据
+ * @CreatedBy  : Assistant
+ * @CreatedDate: 2025.01.27
+ *******************************************************************************
+ */
+uint16_t is25pl032_flash_get_pump_delay1(void)
+{
+    return dev_cfg.u_cfg.cfg.pump_delay1;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置停泵状态下的静态井斜前置延迟时间1
+ * @Parameters : delay - 延迟时间（秒）
+ * @RetValue   : 0-成功
+ * @Note       : 设置停泵状态下静态井斜前置延迟时间1
+ *               该参数控制停泵后多久开始记录静态井斜数据
+ *               默认为8秒
+ * @CreatedBy  : Assistant
+ * @CreatedDate: 2025.01.27
+ *******************************************************************************
+ */
+uint16_t is25pl032_flash_set_pump_delay1(uint16_t delay)
+{
+    dev_cfg.u_cfg.cfg.pump_delay1 = delay;
+    return 0;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 获取停泵状态下的静态井斜前置延迟时间2
+ * @Parameters : 无
+ * @RetValue   : 延迟时间（秒）
+ * @Note       : 获取停泵状态下静态井斜前置延迟时间2的配置值
+ *               默认为12秒，用于控制停泵后多久开始记录静态井斜数据
+ *               与pump_delay1配合使用，提供更灵活的延迟控制
+ * @CreatedBy  : Assistant
+ * @CreatedDate: 2025.01.27
+ *******************************************************************************
+ */
+uint16_t is25pl032_flash_get_pump_delay2(void)
+{
+    return dev_cfg.u_cfg.cfg.pump_delay2;
+}
+
+/**
+ *******************************************************************************
+ * @Description: 设置停泵状态下的静态井斜前置延迟时间2
+ * @Parameters : delay - 延迟时间（秒）
+ * @RetValue   : 0-成功
+ * @Note       : 设置停泵状态下静态井斜前置延迟时间2
+ *               该参数控制停泵后多久开始记录静态井斜数据
+ *               默认为12秒，与pump_delay1配合使用，提供更灵活的延迟控制
+ * @CreatedBy  : Assistant
+ * @CreatedDate: 2025.01.27
+ *******************************************************************************
+ */
+uint16_t is25pl032_flash_set_pump_delay2(uint16_t delay)
+{
+    dev_cfg.u_cfg.cfg.pump_delay2 = delay;
+    return 0;
+}
+
 /**
  *******************************************************************************
  * @Description: 设置泥浆脉冲数据重传次数
@@ -1737,9 +1699,9 @@ int32_t set_temp_comp_upper_limit(float limit)
  * @Note       : 设置泥浆脉冲数据有效范围的重传次数
  *******************************************************************************
  */
-uint32_t is25pl032_flash_set_retry_count(uint32_t count)
+uint32_t is25pl032_flash_set_pulse_retry_for_pump_off_data(uint32_t count)
 {
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.max_retry_count = count;
+    dev_cfg.u_cfg.cfg.pulse_retry_for_pump_off_data = count;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1751,9 +1713,9 @@ uint32_t is25pl032_flash_set_retry_count(uint32_t count)
  * @Note       : 获取静态脉冲数据有效范围的重传次数
  *******************************************************************************
  */
-uint32_t is25pl032_flash_get_retry_count(void)
+uint32_t is25pl032_flash_get_pulse_retry_for_pump_off_data(void)
 {
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.max_retry_count;
+    return dev_cfg.u_cfg.cfg.pulse_retry_for_pump_off_data;
 }
 
 /**
@@ -1764,9 +1726,9 @@ uint32_t is25pl032_flash_get_retry_count(void)
  * @Note       : 设置静态脉冲数据重传时间间隔
  *******************************************************************************
  */
-uint32_t is25pl032_flash_set_retry_interval(uint32_t retry_interval)
+uint32_t is25pl032_flash_set_pulse_interval_for_pump_off_data(uint32_t retry_interval)
 {
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.retry_interval = retry_interval;
+    dev_cfg.u_cfg.cfg.pulse_interval_for_pump_off_data = retry_interval;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1778,22 +1740,22 @@ uint32_t is25pl032_flash_set_retry_interval(uint32_t retry_interval)
  * @Note       : 获取静态脉冲数据重传时间间隔
  *******************************************************************************
  */
-uint32_t is25pl032_flash_get_retry_interval(void)
+uint32_t is25pl032_flash_get_pulse_interval_for_pump_off_data(void)
 {
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.retry_interval;
+    return dev_cfg.u_cfg.cfg.pulse_interval_for_pump_off_data;
 }
 
 /**
  *******************************************************************************
  * @Description: 设置动态脉冲数据周期性上传时间
- * @Parameters : Pulse_auto_send - 动态脉冲数据周期性上传时间
+ * @Parameters : pulse_interval - 动态脉冲数据周期性上传时间
  * @RetValue   : 0-成功，-1-失败
  * @Note       : 设置动态脉冲数据周期性上传时间
  *******************************************************************************
  */
-uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
+uint32_t is25pl032_flash_set_pulse_interval(uint32_t pulse_interval)
 {
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.auto_send_period = Pulse_auto_send;
+    dev_cfg.u_cfg.cfg.pulse_interval = pulse_interval;
     return is25pl032_flash_save_dev_cfg();
 }
 
@@ -1805,104 +1767,9 @@ uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send)
  * @Note       : 获取动态脉冲数据周期性上传时间
  *******************************************************************************
  */
-uint32_t is25pl032_flash_get_Pulse_auto_send(void)
+uint32_t is25pl032_flash_get_pulse_interval(void)
 {
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.auto_send_period;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置静态脉冲数据采集时间
- * @Parameters : Static_data_collection - 静态脉冲数据采集时间
- * @RetValue   : 0-成功，-1-失败
- * @Note       : 设置静态脉冲数据采集时间
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collection)
-{
-    dev_cfg.u_cfg.cfg.mud_pulse_cfg.static_collection_time = Static_data_collection;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取静态脉冲数据采集时间
- * @Parameters : 无
- * @RetValue   : 静态脉冲数据采集时间
- * @Note       : 获取静态脉冲数据采集时间
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_Static_data_collection(void)
-{
-    return dev_cfg.u_cfg.cfg.mud_pulse_cfg.static_collection_time;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置ADXL357振动阈值数据
- * @Parameters : vibration_threshold - 振动阈值（0.1-5.0g）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置ADXL357振动阈值数据
- *               此参数作为其他振动检测参数的基准值
- *               推荐范围：0.5-1.5g，根据钻井环境调整
- *               数值越大检测越严格，数值越小检测越敏感
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_threshold(float vibration_threshold)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.threshold = vibration_threshold;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取ADXL357振动阈值数据
- * @Parameters : 无
- * @RetValue   : ADXL357振动阈值数据（float）
- * @Note       : 获取ADXL357振动阈值数据
- *               如果Flash中未保存配置，返回默认值1.0g
- *               此参数作为其他振动检测参数的基准值
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_threshold(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return DEFAULT_VIBRATION_THRESHOLD;
-    return dev_cfg.u_cfg.cfg.vibration_cfg.threshold;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置ADXL357振动差值阈值数据
- * @Parameters : vibration_delta_threshold - 振动差值阈值（0.05-0.5g）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置ADXL357振动差值阈值数据
- *               此参数用于检测振动频率，数值越大检测越严格
- *               推荐范围：0.06-0.15g，根据振动频率调整
- *               用于模式2和模式4的差值计数检测
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_delta_threshold(float vibration_delta_threshold)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.delta_threshold = vibration_delta_threshold;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取ADXL357振动差值阈值数据
- * @Parameters : 无
- * @RetValue   : ADXL357振动差值阈值数据（float）
- * @Note       : 获取ADXL357振动差值阈值数据
- *               如果Flash中未保存配置，返回默认值0.1g
- *               此参数用于检测振动频率和变化
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_delta_threshold(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return DEFAULT_VIBRATION_DELTA_THRESHOLD;
-    return dev_cfg.u_cfg.cfg.vibration_cfg.delta_threshold;
+    return dev_cfg.u_cfg.cfg.pulse_interval;
 }
 
 /**
@@ -1961,167 +1828,6 @@ uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
 }
 
 /**
- *******************************************************************************
- * @Description: 获取ADXL357三轴加速度模长NORM值
- * @Parameters : 无
- * @RetValue   : NORM值（float）
- * @Note       : 获取ADXL357三轴加速度模长NORM值
- *               此值用于计算三轴加速度的合成值
- *               如果Flash中未保存配置，返回默认值49526.6797
- *               NORM = sqrt(x² + y² + z²)，用于振动检测计算
- *******************************************************************************
- */
-float is25pl032_flash_get_norm(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return DEFAULT_NORM_VALUE;
-    return dev_cfg.u_cfg.cfg.vibration_cfg.norm;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置ADXL357三轴加速度模长NORM值
- * @Parameters : norm - 要设置的NORM值
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置NORM参数并保存到Flash
- *               此值用于计算三轴加速度的合成值
- *               通常不需要修改，使用默认值即可
- *               NORM值影响振动检测的精度和稳定性
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_norm(float norm)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.norm = norm;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 设置振动检测RMS阈值
- * @Parameters : vibration_rms - RMS检测阈值（0.1-1.0g）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置模式4中RMS检测的阈值参数
- *               此参数用于检测振动能量，数值越大检测越严格
- *               推荐范围：0.15-0.5g，根据振动强度调整
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_rms(float vibration_rms)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.rms_threshold = vibration_rms;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测RMS阈值
- * @Parameters : 无
- * @RetValue   : RMS检测阈值（float）
- * @Note       : 获取当前设置的RMS检测阈值
- *               如果Flash中未保存配置，返回默认值0.2g
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_rms(void)
-{
-    return dev_cfg.u_cfg.cfg.vibration_cfg.rms_threshold;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置振动检测源选择
- * @Parameters : vibration_source - 振动检测源（0.0f-GPIO，1.0f-ADXL357）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置振动检测的源选择
- *               0.0f：GPIO振动检测（传统方式）
- *               1.0f：ADXL357传感器振动检测（推荐方式）
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_vibration_source(float vibration_source)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.vibration_source = vibration_source;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取振动检测源选择
- * @Parameters : 无
- * @RetValue   : 振动检测源（0.0f-GPIO，1.0f-ADXL357）
- * @Note       : 获取当前振动检测的源选择
- *               如果Flash中未保存配置，返回默认值0.0f（GPIO）
- *******************************************************************************
- */
-float is25pl032_flash_get_vibration_source(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return VIBRATION_DEFAULT_SOURCE; // 默认使用GPIO
-    return dev_cfg.u_cfg.cfg.vibration_cfg.vibration_source;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置差值触发次数比例
- * @Parameters : delta_trigger_ratio - 差值触发次数比例（1-10）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置差值触发次数比例参数并保存到Flash
- *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
- *               此参数用于控制差值检测的敏感度
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_delta_trigger_ratio(uint32_t delta_trigger_ratio)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.delta_trigger_ratio = delta_trigger_ratio;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取差值触发次数比例
- * @Parameters : 无
- * @RetValue   : 差值触发次数比例（1-10）
- * @Note       : 获取当前设置的差值触发次数比例
- *               如果Flash中未保存配置，返回默认值7（70%）
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_delta_trigger_ratio(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return DEFAULT_DELTA_TRIGGER_RATIO; // 默认70%
-    return dev_cfg.u_cfg.cfg.vibration_cfg.delta_trigger_ratio;
-}
-
-/**
- *******************************************************************************
- * @Description: 设置RMS触发次数比例
- * @Parameters : rms_trigger_ratio - RMS触发次数比例（1-10）
- * @RetValue   : 0-成功，非0-失败
- * @Note       : 设置RMS触发次数比例参数并保存到Flash
- *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
- *               此参数用于控制RMS检测的敏感度
- *******************************************************************************
- */
-uint32_t is25pl032_flash_set_rms_trigger_ratio(uint32_t rms_trigger_ratio)
-{
-    dev_cfg.u_cfg.cfg.vibration_cfg.rms_trigger_ratio = rms_trigger_ratio;
-    return is25pl032_flash_save_dev_cfg();
-}
-
-/**
- *******************************************************************************
- * @Description: 获取RMS触发次数比例
- * @Parameters : 无
- * @RetValue   : RMS触发次数比例（1-10）
- * @Note       : 获取当前设置的RMS触发次数比例
- *               如果Flash中未保存配置，返回默认值7（70%）
- *******************************************************************************
- */
-uint32_t is25pl032_flash_get_rms_trigger_ratio(void)
-{
-    if (dev_cfg.u_cfg.cfg.device_cfg_tag != DEVICE_CFG_FLAG)
-        return DEFAULT_RMS_TRIGGER_RATIO; // 默认70%
-    return dev_cfg.u_cfg.cfg.vibration_cfg.rms_trigger_ratio;
-}
-
-/**
   *******************************************************************************
   * @Description: Flash操作时的中断控制函数
   * @Parameters : enable - true启用中断，false禁用中断
@@ -2133,26 +1839,15 @@ uint32_t is25pl032_flash_get_rms_trigger_ratio(void)
   */
 void flash_control_sensor_interrupts(bool enable)
 {
-    #if ADXL357_FLASH_INTERRUPT_CONTROL == 1
     if(enable) {
         // 重新启用传感器中断
         // printf("Flash: Re-enabling sensor interrupts...\r\n");
-        PINS_DRV_SetPinIntSel(PORTE, 1, PORT_INT_FALLING_EDGE);  // PTE1 - ADXL357
         PINS_DRV_SetPinIntSel(PORTE, 5, PORT_INT_FALLING_EDGE);  // PTE5 - IAM20680HT
-
-        // 井下模式：重新配置ADXL357为FIFO中断（固定配置）
-        adxl357_reconfigure_interrupts(INT_MAP_FIFO_FULL);
-
-        // printf("Flash: Sensor interrupts re-enabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
+        // printf("Flash: Sensor interrupts re-enabled (PTE5: IAM20680HT)\r\n");
     } else {
         // 禁用传感器中断
         // printf("Flash: Disabling sensor interrupts for Flash operation...\r\n");
-        PINS_DRV_SetPinIntSel(PORTE, 1, PORT_DMA_INT_DISABLED);  // PTE1 - ADXL357
         PINS_DRV_SetPinIntSel(PORTE, 5, PORT_DMA_INT_DISABLED);  // PTE5 - IAM20680HT
-        // printf("Flash: Sensor interrupts disabled (PTE1: ADXL357, PTE5: IAM20680HT)\r\n");
+        // printf("Flash: Sensor interrupts disabled (PTE5: IAM20680HT)\r\n");
     }
-    #else
-    // Flash操作时的中断控制被禁用，不执行任何操作
-    (void)enable; // 避免编译器警告
-    #endif
 }

@@ -494,7 +494,7 @@ void compute_ie()
 
     local_hs = atan2(-sensor_data.ax_cf_g, sensor_data.ay_cf_g) * _180_Div_Pi;
     if (local_hs < 0) {
-        local_hs += 360.0;
+        local_hs += 360.0f;
     }
 //    excel中计算高边的公式：
 //    =IF(ATAN2(-X轴数据,Y轴数据)*180/PI()<0,360+ATAN2(-X轴数据,Y轴数据)*180/PI(),ATAN2(-X轴数据,Y轴数据)*180/PI())

@@ -23,9 +23,9 @@ extern "C"
 #include "cpu.h"
 
     /**
-     * @brief 日志数据结构体 (总大小: 178字节)
+     * @brief 日志数据结构体 (总大小: 124字节)
      * @note 使用__packed属性确保结构体紧凑排列，无填充字节
-     * @details 包含传感器数据、倾角信息、振动检测数据、计数器等完整信息
+     * @details 包含传感器数据、倾角信息、虚拟半径、系统状态等完整信息
      */
     typedef __packed struct _log_
     {
@@ -65,42 +65,16 @@ extern "C"
         float gz_avg;               // 4字节 - Z轴角速度平均值
         float temp;                 // 4字节 - 温度
 
-        /* 时间相关数据 (8字节) */
-        float roll;                 // 4字节 - 日志间隔内转速（没有使用）
-        uint32_t diff_t;            // 4字节 - 时间差
-
-        /* 统计计算数据 (20字节) */
-        float virtual_x_radius_avg; // 4字节 - 虚拟X半径平均值（没有使用）
-        float virtual_y_radius_avg; // 4字节 - 虚拟Y半径平均值（没有使用）
+        /* 统计计算电源数据 (8字节) */
         float gz_dps_sdv_max;       // 4字节 - Z轴角速度标准差最大值
         float gz_dps_sdv_min;       // 4字节 - Z轴角速度标准差最小值
-        float std_dev_ax_ay_max;    // 4字节 - XY轴加速度标准差之和的最大值
 
-        /* 振动检测数据 (28字节) */
-        float vibration_data_min;   // 4字节 - 振动数据最小值
-        float vibration_data_max;   // 4字节 - 振动数据最大值
-        float vibration_data_avg;   // 4字节 - 振动数据平均值
-        uint32_t flag;              // 4字节 - 振动标志
-        uint32_t vibration_delta_count_total;     // 4字节 - 周期内总差值计数
-        uint32_t vibration_rms_over_count_total;  // 4字节 - 周期内总RMS超过次数
-        float vibration_rms_current;              // 4字节 - 当前RMS值
-        float vibration_delta_max;                // 4字节 - 周期内差值最大值
-
-        /* 计数器数据 (24字节) */
-        int c0_num_max;             // 4字节 - 计数器0最大值
-        int c0_num_min;             // 4字节 - 计数器0最小值
-        int c1_num_max;             // 4字节 - 计数器1最大值
-        int c1_num_min;             // 4字节 - 计数器1最小值
-        int c2_num_max;             // 4字节 - 计数器2最大值
-        int c2_num_min;             // 4字节 - 计数器2最小值
-
-        /* 平静时间数据 (10字节) */
-        float max_peace_time_max;   // 4字节 - 最大平静时间最大值
-        float max_peace_time_min;   // 4字节 - 最大平静时间最小值
-        uint16_t peace_time_count;  // 2字节 - 满足条件的次数
-
-        /* 电源和校验数据 (8字节) */
+        /* 电源数据 (4字节) */
         float s_f32_36V;            // 4字节 - 电池电压值
+
+        /* 标志位（保留给振动使用的） (4字节) */
+        uint32_t flag;              // 4字节 - 系统标志位
+
         int16_t reserved1[1];       // 2字节 - 保留字段1
         uint16_t crc16;             // 2字节 - CRC16校验值
     } log_t;
@@ -292,7 +266,7 @@ extern "C"
      * @Note       : 设置设备的基本参数
      *******************************************************************************
      */
-    void is25pl032_flash_set_param(uint8_t accfir, uint8_t gyrofir, double xr_limit, double yr_limit, double gain);
+    void is25pl032_flash_set_param(double xr_limit, double yr_limit);
 
     /**
      *******************************************************************************
@@ -304,7 +278,7 @@ extern "C"
      * @Note       : 获取设备的基本参数
      *******************************************************************************
      */
-    void is25pl032_flash_get_param(uint8_t *accfir, uint8_t *gyrofir, double *xr_limit, double *yr_limit, double *gain);
+    void is25pl032_flash_get_param(double *xr_limit, double *yr_limit);
 
     /**
      *******************************************************************************
@@ -489,35 +463,26 @@ extern "C"
      *******************************************************************************
      */
     int32_t set_temp_comp_upper_limit(float limit);
+
     /**
      *******************************************************************************
-     * @Description: 设置泥浆脉冲数据重传次数
+     * @Description: 设置静态脉冲数据重传次数
      * @Parameters : count - 重传次数
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置泥浆脉冲数据有效范围的重传次数
+     * @Note       : 设置静态脉冲数据有效范围的重传次数
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_retry_count(uint32_t count);
+    uint32_t is25pl032_flash_set_pulse_retry_for_pump_off_data(uint32_t count);
 
     /**
      *******************************************************************************
-     * @Description: 获取泥浆脉冲数据重传次数
+     * @Description: 获取静态脉冲数据重传次数
      * @Parameters : 无
-     * @RetValue   : 泥浆脉冲数据重传次数
-     * @Note       : 获取泥浆脉冲数据有效范围的重传次数
+     * @RetValue   : 静态脉冲数据重传次数
+     * @Note       : 获取静态脉冲数据有效范围的重传次数
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_retry_count(void);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置静态脉冲数据重传时间间隔
-     * @Parameters : retry_interval - 静态脉冲数据重传时间间隔（秒）
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置静态脉冲数据重传时间间隔
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_retry_interval(uint32_t retry_interval);
+    uint32_t is25pl032_flash_get_pulse_retry_for_pump_off_data(void);
 
     /**
      *******************************************************************************
@@ -527,94 +492,82 @@ extern "C"
      * @Note       : 获取静态脉冲数据重传时间间隔
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_retry_interval(void);
+    uint32_t is25pl032_flash_get_pulse_interval_for_pump_off_data(void);
 
     /**
      *******************************************************************************
-     * @Description: 设置动态脉冲数据周期性上传时间
-     * @Parameters : Pulse_auto_send - 动态脉冲数据周期性上传时间
+     * @Description: 设置静态脉冲数据重传时间间隔
+     * @Parameters : retry_interval - 静态脉冲数据重传时间间隔（秒）
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置动态脉冲数据周期性上传时间
+     * @Note       : 设置静态脉冲数据重传时间间隔
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send);
+    uint32_t is25pl032_flash_set_pulse_interval_for_pump_off_data(uint32_t retry_interval);
+
     /**
      *******************************************************************************
      * @Description: 获取动态脉冲数据周期性上传时间
      * @Parameters : 无
-     * @RetValue   : 动态脉冲数据周期性上传时间
+     * @RetValue   : 动态脉冲数据周期性上传时间（秒）
      * @Note       : 获取动态脉冲数据周期性上传时间
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_Pulse_auto_send(void);
+    uint32_t is25pl032_flash_get_pulse_interval(void);
+
     /**
      *******************************************************************************
-     * @Description: 设置静态脉冲数据采集时间
-     * @Parameters : Static_data_collection - 静态脉冲数据采集时间
+     * @Description: 设置动态脉冲数据周期性上传时间
+     * @Parameters : pulse_interval - 动态脉冲数据周期性上传时间（秒）
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置静态脉冲数据采集时间
+     * @Note       : 设置动态脉冲数据周期性上传时间
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collection);
+    uint32_t is25pl032_flash_set_pulse_interval(uint32_t pulse_interval);
+
     /**
      *******************************************************************************
-     * @Description: 获取静态脉冲数据采集时间
+     * @Description: 获取停泵状态下的静态井斜前置延迟时间1
      * @Parameters : 无
-     * @RetValue   : 静态脉冲数据采集时间
-     * @Note       : 获取静态脉冲数据采集时间
+     * @RetValue   : 延迟时间（秒）
+     * @Note       : 获取停泵状态下静态井斜前置延迟时间1的配置值
+     *               默认为8秒，用于控制停泵后多久开始记录静态井斜数据
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_Static_data_collection(void);
+    uint16_t is25pl032_flash_get_pump_delay1(void);
 
     /**
      *******************************************************************************
-     * @Description: 设置ADXL357振动阈值数据
-     * @Parameters : vibration_threshold - 振动阈值（0.1-5.0g）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置ADXL357振动阈值数据
-     *               此参数作为其他振动检测参数的基准值
-     *               推荐范围：0.5-1.5g，根据钻井环境调整
-     *               数值越大检测越严格，数值越小检测越敏感
+     * @Description: 设置停泵状态下的静态井斜前置延迟时间1
+     * @Parameters : delay - 延迟时间（秒）
+     * @RetValue   : 0-成功
+     * @Note       : 设置停泵状态下静态井斜前置延迟时间1
+     *               默认为8秒，用于控制停泵后多久开始记录静态井斜数据
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_vibration_threshold(float vibration_threshold);
+    uint16_t is25pl032_flash_set_pump_delay1(uint16_t delay);
 
     /**
      *******************************************************************************
-     * @Description: 获取ADXL357振动阈值数据
+     * @Description: 获取停泵状态下的静态井斜前置延迟时间2
      * @Parameters : 无
-     * @RetValue   : ADXL357振动阈值数据（float）
-     * @Note       : 获取ADXL357振动阈值数据
-     *               如果Flash中未保存配置，返回默认值1.0g
-     *               此参数作为其他振动检测参数的基准值
+     * @RetValue   : 延迟时间（秒）
+     * @Note       : 获取停泵状态下静态井斜前置延迟时间2的配置值
+     *               默认为12秒，用于控制停泵后多久开始记录静态井斜数据
+     *               与pump_delay1配合使用，提供更灵活的延迟控制
      *******************************************************************************
      */
-    float is25pl032_flash_get_vibration_threshold(void);
+    uint16_t is25pl032_flash_get_pump_delay2(void);
 
     /**
      *******************************************************************************
-     * @Description: 设置ADXL357振动差值阈值数据
-     * @Parameters : vibration_delta_threshold - 振动差值阈值（0.05-0.5g）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置ADXL357振动差值阈值数据
-     *               此参数用于检测振动频率，数值越大检测越严格
-     *               推荐范围：0.06-0.15g，根据振动频率调整
-     *               用于模式2和模式4的差值计数检测
+     * @Description: 设置停泵状态下的静态井斜前置延迟时间2
+     * @Parameters : delay - 延迟时间（秒）
+     * @RetValue   : 0-成功
+     * @Note       : 设置停泵状态下静态井斜前置延迟时间2
+     *               默认为12秒，与pump_delay1配合使用，提供更灵活的延迟控制
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_vibration_delta_threshold(float vibration_delta_threshold);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取ADXL357振动差值阈值数据
-     * @Parameters : 无
-     * @RetValue   : ADXL357振动差值阈值数据（float）
-     * @Note       : 获取ADXL357振动差值阈值数据
-     *               如果Flash中未保存配置，返回默认值0.1g
-     *               此参数用于检测振动频率和变化
-     *******************************************************************************
-     */
-    float is25pl032_flash_get_vibration_delta_threshold(void);
+    uint16_t is25pl032_flash_set_pump_delay2(uint16_t delay);
 
     /**
      *******************************************************************************
@@ -655,125 +608,6 @@ extern "C"
      *******************************************************************************
      */
     uint32_t is25pl032_flash_set_calibration_data(float calibration_data);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取ADXL357三轴加速度模长NORM值
-     * @Parameters : 无
-     * @RetValue   : NORM值（float）
-     * @Note       : 获取ADXL357三轴加速度模长NORM值
-     *               此值用于计算三轴加速度的合成值
-     *               如果Flash中未保存配置，返回默认值49526.6797
-     *               NORM = sqrt(x² + y² + z²)，用于振动检测计算
-     *******************************************************************************
-     */
-    float is25pl032_flash_get_norm(void);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置ADXL357三轴加速度模长NORM值
-     * @Parameters : norm - 要设置的NORM值
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置NORM参数并保存到Flash
-     *               此值用于计算三轴加速度的合成值
-     *               通常不需要修改，使用默认值即可
-     *               NORM值影响振动检测的精度和稳定性
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_norm(float norm);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置振动检测RMS阈值
-     * @Parameters : vibration_rms - RMS检测阈值（0.1-1.0g）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置模式4中RMS检测的阈值参数
-     *               此参数用于检测振动能量，数值越大检测越严格
-     *               推荐范围：0.15-0.5g，根据振动强度调整
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_vibration_rms(float vibration_rms);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取振动检测RMS阈值
-     * @Parameters : 无
-     * @RetValue   : RMS检测阈值（float）
-     * @Note       : 获取当前设置的RMS检测阈值
-     *               如果Flash中未保存配置，返回默认值0.2g
-     *******************************************************************************
-     */
-    float is25pl032_flash_get_vibration_rms(void);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置振动检测源选择
-     * @Parameters : vibration_source - 振动检测源选择（0.0f-GPIO，1.0f-ADXL357）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置振动检测的源选择并保存到Flash
-     *               0.0f：使用GPIO振动检测（传统方式）
-     *               1.0f：使用ADXL357传感器振动检测（推荐方式）
-     *               此设置影响所有使用振动检测的功能，包括泥浆脉冲控制
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_vibration_source(float vibration_source);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取振动检测源选择
-     * @Parameters : 无
-     * @RetValue   : 振动检测源（0.0f-GPIO，1.0f-ADXL357）
-     * @Note       : 获取当前振动检测的源选择
-     *               如果Flash中未保存配置，返回默认值0.0f（GPIO）
-     *******************************************************************************
-     */
-    float is25pl032_flash_get_vibration_source(void);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置差值触发次数比例
-     * @Parameters : delta_trigger_ratio - 差值触发次数比例（1-10）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置差值触发次数比例参数并保存到Flash
-     *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
-     *               此参数用于控制差值检测的敏感度
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_delta_trigger_ratio(uint32_t delta_trigger_ratio);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取差值触发次数比例
-     * @Parameters : 无
-     * @RetValue   : 差值触发次数比例（1-10）
-     * @Note       : 获取当前设置的差值触发次数比例
-     *               如果Flash中未保存配置，返回默认值7（70%）
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_delta_trigger_ratio(void);
-
-    /**
-     *******************************************************************************
-     * @Description: 设置RMS触发次数比例
-     * @Parameters : rms_trigger_ratio - RMS触发次数比例（1-10）
-     * @RetValue   : 0-成功，非0-失败
-     * @Note       : 设置RMS触发次数比例参数并保存到Flash
-     *               1=10%（160次），2=20%（320次），...，10=100%（1600次）
-     *               此参数用于控制RMS检测的敏感度
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_rms_trigger_ratio(uint32_t rms_trigger_ratio);
-
-    /**
-     *******************************************************************************
-     * @Description: 获取RMS触发次数比例
-     * @Parameters : 无
-     * @RetValue   : RMS触发次数比例（1-10）
-     * @Note       : 获取当前设置的RMS触发次数比例
-     *               如果Flash中未保存配置，返回默认值7（70%）
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_rms_trigger_ratio(void);
 
     /**
      *******************************************************************************

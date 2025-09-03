@@ -715,16 +715,6 @@
               <FilePath>..\Drivers\IAM_20680HT.C</FilePath>
             </File>
             <File>
-              <FileName>vibration_detector.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Drivers\vibration_detector.c</FilePath>
-            </File>
-            <File>
-              <FileName>adxl357.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Drivers\adxl357.c</FilePath>
-            </File>
-            <File>
               <FileName>ads1278_imu.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Drivers\ads1278_imu.c</FilePath>
@@ -758,11 +748,6 @@
               <FileName>signal_process.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\signal_process.c</FilePath>
-            </File>
-            <File>
-              <FileName>mud_pulse.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\App\mud_pulse.c</FilePath>
             </File>
           </Files>
         </Group>

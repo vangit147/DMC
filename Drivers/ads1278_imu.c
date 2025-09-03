@@ -48,8 +48,8 @@ ads1278_global_raw_data_t s_ads1278_global_raw_data = {0};
   */
 static void ads1278_update_global_vars(void)
 {
-#define     MV_PER_G        480     //1g加速度对应的毫伏值
-    double    adc_scale = 2.0 * 2500.0 / 0x1000000 / MV_PER_G;
+//		#define     MV_PER_G        480     //1g加速度对应的毫伏值
+//    double    adc_scale = 2.0 * 2500.0 / 0x1000000 / MV_PER_G;
 
     
     // 更新原始数据结构体

@@ -27,7 +27,6 @@ extern "C" {
 
 #include "../version.h"
 #include "adxl357.h"
-#include "vibration_detector.h"
 #include "device_registers.h"
 #include "system_S32K144.h"
 #include "cpu.h"
