@@ -370,6 +370,8 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 
         if (log->crc16 == CRC16(log, sizeof(log_t) - 2))
             return 1;
+        else
+            printf("Reading ONE log failed! log->crc16=%d,CRC16(log, sizeof(log_t) - 2)=%d,rd_index=%d flash_address=0x%08x\r\n", log->crc16, CRC16(log, sizeof(log_t) - 2), rd_index, flash_address);
     }
     return 0;
 }
@@ -439,6 +441,8 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         is25pl032_flash_normal_read(flash_wr_address, (uint8_t *)&log_rd, sizeof(log_t));
         if (memcmp(&log_rd, log, sizeof(log_t)) == 0)
             break;
+        else
+            printf("Writing ONE log failed! log_context.log_write_index=%d flash_wr_address=0x%08x\r\n", log_context.log_write_index, flash_wr_address);
     }
 
     if (i == 3)
