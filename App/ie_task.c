@@ -159,7 +159,7 @@ static void ie_task_timer_50ms_cb(TimerHandle_t xTimer);
 
 /* 公共函数声明 */
 void getRadiusOffset(float *ry, float *offsetX, float *offsetY, float *rx, float *yrLimit, float *xrLimit);
-void compute_ie();
+void compute_ie(void);
 void interval_info_deal(bool period_end);
 int32_t get_inc_hs(inclination_hs_t* inc_hs);
 void get_interval_info(interval_info_t* info);
@@ -745,8 +745,8 @@ static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out)
     float bias_pred = ekf_state.bias; // 假设偏差保持不变
 
     // 2.2 误差协方差预测
-    float F[2][2] = {{1.0f, -EKF_DT}, {0.0f, 1.0f}};           // 状态转移矩阵
-    float Q[2][2] = {{dynamic_Q_ANGLE, 0.0f}, {0.0f, dynamic_Q_GYRO}}; // 使用动态调整的过程噪声协方差
+//    float F[2][2] = {{1.0f, -EKF_DT}, {0.0f, 1.0f}};           // 状态转移矩阵
+//    float Q[2][2] = {{dynamic_Q_ANGLE, 0.0f}, {0.0f, dynamic_Q_GYRO}}; // 使用动态调整的过程噪声协方差
 
     // P = F*P*F' + Q
     float P_temp[2][2];
@@ -757,7 +757,7 @@ static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out)
 
     // 3. 更新步骤
     // 3.1 计算卡尔曼增益
-    float H[2] = {1.0f, 0.0f};            // 观测矩阵
+//    float H[2] = {1.0f, 0.0f};            // 观测矩阵
     float S = P_temp[0][0] + dynamic_R_ANGLE; // 使用动态调整的测量噪声协方差
     float K[2];                           // 卡尔曼增益
     K[0] = P_temp[0][0] / S;

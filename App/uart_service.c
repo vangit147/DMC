@@ -963,7 +963,7 @@ void send_msg(void)
     {
         // 设置静态脉冲数据重传时间间隔
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val < 0 || val > 3600)
+        if (val > 3600)
             goto error;
         is25pl032_flash_set_pulse_interval_for_pump_off_data(val);
         isSend = 0;
