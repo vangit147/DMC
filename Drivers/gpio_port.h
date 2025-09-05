@@ -25,7 +25,7 @@ extern "C" {
 int32_t gpio_port_init(void);
 int32_t gpio_porta_register_cb(void (*cb)(uint32_t));
 int32_t gpio_portc_register_cb(void (*cb)(uint32_t));
-int32_t gpio_porte_register_cb(void (*cb)(uint32_t));
+int32_t gpio_porte_register_cb(uint32_t flag,void (*cb)(void));
 
 #ifdef __cplusplus
 }

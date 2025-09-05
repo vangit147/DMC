@@ -106,21 +106,9 @@ static int32_t iam_20680ht_write_reg(uint32_t reg, uint32_t data, uint32_t check
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static void iam_20680ht_data_ready_isr(uint32_t int_flag)
+static void iam_20680ht_data_ready_isr(void)
 {
-    // static uint32_t interrupt_count = 0;
-
-    // 只检查PTE5中断（IAM_20680HT的INT引脚）
-    if(int_flag & (1 << 5)) {  // PTE5对应位5
-        // interrupt_count++;
-
-        // // 每250次中断打印一次日志（约1秒一次），减少输出频率
-        // if(interrupt_count % 250 == 1) {
-        //     printf("IAM20680HT ISR: PTE5 interrupt triggered! INT_FLAG: 0x%08X (Count: %lu)\r\n", int_flag, interrupt_count);
-        // }
-
-        xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY, eSetBits, NULL, NULL);
-    }
+    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY, eSetBits, NULL, NULL);
 }
 
 /**
@@ -173,7 +161,8 @@ static int32_t iam_20680ht_init(void)
     /*
     注册中断回调函数
     */
-    gpio_porte_register_cb(iam_20680ht_data_ready_isr);
+    // PTE5对应位5
+    gpio_porte_register_cb((1 << 5),iam_20680ht_data_ready_isr);
 
     /*
     Bit7:    -
