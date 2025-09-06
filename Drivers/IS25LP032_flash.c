@@ -232,11 +232,6 @@ typedef __packed struct _log_context
     /*8*/
     int32_t log_write_index;
 
-    /*8*/
-    int32_t log_write_total;
-
-    /*8*/
-    int32_t log_write_last_total;
     /*12*/
     uint16_t log_tag;
     uint16_t crc16;
@@ -304,7 +299,6 @@ static int32_t is25pl032_flash_update_context(void)
 int32_t is25pl032_flash_reset_rd_index(void)
 {
     log_context.log_to_be_read_count = log_context.log_total_count;
-    log_context.log_write_total = log_context.log_write_last_total;
     return is25pl032_flash_update_context();
 }
 /**
@@ -321,9 +315,7 @@ int32_t is25pl032_flash_reset_rd_index(void)
 int32_t is25pl032_flash_delete_all_log(void)
 {
     log_context.log_total_count = 0;
-    log_context.log_to_be_read_count = 0;
-    log_context.log_write_total = 0;
-    log_context.log_write_last_total = 0;
+    log_context.log_to_be_read_count = log_context.log_total_count;
     return is25pl032_flash_update_context();
 }
 
@@ -345,8 +337,8 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
         uint32_t flash_address = LOG_FLASH_ADDRESS;
         int32_t rd_index;
 
-        rd_index = log_context.log_write_index - log_context.log_write_total;
-        log_context.log_write_total--;
+        rd_index = log_context.log_write_index + 1 - log_context.log_to_be_read_count;
+        log_context.log_to_be_read_count--;
         // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约33,628条日志)
         if (rd_index < 0)
             rd_index += LOG_FLASH_SIZE / sizeof(log_t);
@@ -377,10 +369,7 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
         }
 
         if (log->crc16 == CRC16(log, sizeof(log_t) - 2))
-        {
-            log_context.log_to_be_read_count--;
             return 1;
-        }
         else
             printf("Reading ONE log failed! log->crc16=%d,CRC16(log, sizeof(log_t) - 2)=%d,rd_index=%d flash_address=0x%08x\r\n", log->crc16, CRC16(log, sizeof(log_t) - 2), rd_index, flash_address);
     }
@@ -445,10 +434,6 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         log_context.log_write_index++;
         if (log_context.log_write_index >= LOG_FLASH_SIZE / sizeof(log_t)) //循环写入
             log_context.log_write_index = 0;
-        log_context.log_write_total++;
-        if (log_context.log_write_total >= LOG_FLASH_SIZE / sizeof(log_t))
-            log_context.log_write_total = LOG_FLASH_SIZE / sizeof(log_t);
-        log_context.log_write_last_total = log_context.log_write_total;
         flash_wr_address += log_context.log_write_index * sizeof(log_t);
         is25pl032_flash_normal_write(flash_wr_address, (uint8_t *)log, sizeof(log_t));
 
@@ -1086,7 +1071,6 @@ int32_t is25pl032_flash_init(void)
     // 检查LOG上下文 - 使用动态计算替代硬编码
     log_context.log_tag = LOG_CONTEXT_TAG;
     log_context.log_write_index = -1;
-    log_context.log_write_total = 0;
     log_conext_max_sn = 0;
     uint32_t log_context_buffer_count = LOG_CONTEXT_FLASH_SIZE / sizeof(flash_temp_buffer);
     for (uint32_t i = 0; i < log_context_buffer_count; i++)
