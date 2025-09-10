@@ -993,7 +993,7 @@ void send_msg(void)
     {
         // 设置动态脉冲数据周期性上传时间
         uint32_t val = atoi((const char *)&receiveMsg[4]);
-        if (val < 1200 || val > 36000)
+        if (val < 300 || val > 36000)
             goto error;
         is25pl032_flash_set_pulse_interval(val);
         isSend = 0;
