@@ -794,10 +794,13 @@ int32_t get_inc_hs(inclination_hs_t* inc_hs)
         return -1;
 
     // 复制inc_hs_data中的所有数据到inc_hs
+    inc_hs->good_inc_prefilter = inc_hs_data.good_inc_prefilter;
     inc_hs->inc1 = inc_hs_data.inc1;
     inc_hs->inc2 = inc_hs_data.inc2;
     inc_hs->inc3 = inc_hs_data.inc3;
     inc_hs->hs = inc_hs_data.hs;
+    inc_hs->hs_lpf = inc_hs_data.hs_lpf;
+    inc_hs->hs_bpf = inc_hs_data.hs_bpf;
     inc_hs->inc1_roll = inc_hs_data.inc1_roll;
     inc_hs->inc1_pitch = inc_hs_data.inc1_pitch;
     inc_hs->inc3_roll = inc_hs_data.inc3_roll;
