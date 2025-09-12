@@ -462,7 +462,7 @@ void compute_ie()
     inc_hs_data.inc1_roll = inc_lpf_roll;
     inc_hs_data.inc1_pitch = inc_lpf_pitch;
 
-    local_hs = atan2(-sensor_data.ax_lpf_g,sensor_data.ay_lpf_g)*_180_Div_Pi;
+    local_hs = atan2(sensor_data.ax_lpf_g,sensor_data.ay_lpf_g)*_180_Div_Pi;
 
     // 转换为[0, 360)范围
     if (local_hs < 0)
@@ -492,7 +492,7 @@ void compute_ie()
     inc_bpf = inc_bpf < 0 ? -inc_bpf : inc_bpf;
     
 
-    local_hs = atan2(-sensor_data.ax_cf_g, sensor_data.ay_cf_g) * _180_Div_Pi;
+    local_hs = atan2(sensor_data.ax_cf_g, sensor_data.ay_cf_g) * _180_Div_Pi;
     if (local_hs < 0) {
         local_hs += 360.0f;
     }
