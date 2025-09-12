@@ -370,8 +370,8 @@ static void update_mud_pulser_state(void)
     if(pulser_curr_tx_index == pulser_tx_buffer_len)
     {
         pulser_curr_tx_index = 0;
-        pulser_tx_started = 0; // 标记发送结束，允许启动新的发送
         PINS_DRV_WritePin(MUD_PULSE_PORT_LED, MUD_PULSE_PIN_LED, 0); // 脉冲发送完毕后，LED熄灭
+        pulser_current_duration = pulser_tx_buffer[pulser_curr_tx_index];  // 加载第一段时间
     }
 
     PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulser_curr_tx_index & 0x1);
@@ -950,6 +950,8 @@ void main_task(void *p)
     // 启动算法任务
     xTaskCreate(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
 
+    prepare_data_transmission(0); // 0 for dynamic data
+    pulser_start_tx(pulser_tx_buffer, pulser_tx_buffer_len);
     // 处理上位机事件
     waiting_for_uart2_timeout_tmr = xTimerCreate("uart2_timeout_tmr", 20 * 1000, 0, 0, timer_waiting_for_uart2_timeout_cb);
     xTimerStart(waiting_for_uart2_timeout_tmr, 1000);
@@ -988,6 +990,7 @@ void main_task(void *p)
         if (notify & EVENT_TIMER_100MS)
         {
             PCA8565_on_timer_event();
+            prepare_data_transmission(0); // 0 for dynamic data
         }
         if (notify & EVENT_UART1_RX)
             handle_uart_msg(UART1_rx_buffer, &UART1_rx_data_len);
