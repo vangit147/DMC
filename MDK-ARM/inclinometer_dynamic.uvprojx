@@ -825,6 +825,16 @@
               <FileType>1</FileType>
               <FilePath>..\common\iir_lowpass_filter.c</FilePath>
             </File>
+            <File>
+              <FileName>iir_highpass_filter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\iir_highpass_filter.c</FilePath>
+            </File>
+            <File>
+              <FileName>lib.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\lib.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>

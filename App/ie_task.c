@@ -30,6 +30,7 @@
 
 /* 项目头文件包含 ----------------------------------------------------------------*/
 #include "ie_task.h"
+#include "signal_process.h"
 
 /* 宏定义 ----------------------------------------------------------------*/
 /* 基础计算宏 */
@@ -76,19 +77,19 @@
 #define NO_THRESHOLD 10        /* 标准差阈值 <10 */
 
 /* 距离阈值定义 */
-#define HARSH_DISTANCE 150     /* HARSH阈值对应的距离 */
-#define MILD_DISTANCE 100      /* MILD阈值对应的距离 */
-#define LESS_DISTANCE 50      /* LESS阈值对应的距离 */
-#define NO_DISTANCE 20         /* NO阈值对应的距离 */
+#define HARSH_DISTANCE 180     /* HARSH阈值对应的距离150 */
+#define MILD_DISTANCE 120      /* MILD阈值对应的距离 100*/
+#define LESS_DISTANCE 60      /* LESS阈值对应的距离 50*/
+#define NO_DISTANCE 40         /* NO阈值对应的距离20 */
 
 /* 权重值定义 */
-#define STD_DEV_PROPAGATION_FACTOR 0.05f /* 标准差传播因子 ，在线计算标准差时用于传播*/
-#define HARSH_WEIGHT_NEAR 0.0000005f  /* HARSH阈值近距离权重 */
-#define HARSH_WEIGHT_FAR 0.01f        /* HARSH阈值远距离权重 */
-#define MILD_WEIGHT_NEAR 0.0000001f    /* MILD阈值近距离权重 */
-#define MILD_WEIGHT_FAR 0.01f         /* MILD阈值远距离权重 */
-#define LESS_WEIGHT_NEAR 0.000001f     /* LESS阈值近距离权重 */
-#define LESS_WEIGHT_FAR 0.01f         /* LESS阈值远距离权重 */
+#define STD_DEV_PROPAGATION_FACTOR 0.001f /* 标准差传播因子 ，在线计算标准差时用于传播*/
+#define HARSH_WEIGHT_NEAR 0.00000001f  /* HARSH阈值近距离权重 */
+#define HARSH_WEIGHT_FAR 0.0001f        /* HARSH阈值远距离权重 */
+#define MILD_WEIGHT_NEAR 0.00000001f    /* MILD阈值近距离权重 */
+#define MILD_WEIGHT_FAR 0.0001f         /* MILD阈值远距离权重 */
+#define LESS_WEIGHT_NEAR 0.0000001f     /* LESS阈值近距离权重 */
+#define LESS_WEIGHT_FAR 0.001f         /* LESS阈值远距离权重 */
 #define NO_WEIGHT 0.01f           /* NO阈值远距离权重 */
 
 /* 类型定义 ----------------------------------------------------------------*/
@@ -505,7 +506,7 @@ void compute_ie()
     inc_hs_data.inc3 = algorithm_data.inc3;
     inc_hs_data.hs_bpf = algorithm_data.hs_bpf;
 	inc_hs_data.good_inc=algorithm_data.good_inc;
-
+    inc_hs_data.hs=inc_hs_data.hs_lpf;
 }
 
 
@@ -1109,7 +1110,8 @@ void ie_task(void *p)
 	        ekf_init();
 
 //    xTaskCreate(virtual_radius_task, "virtual_radius_task", 512, NULL, TASK_PRIORITY_VIRTUAL_RADIUS, &virtual_radius_task_handle);
-
+    // 延迟启动定时器，确保ie_task_handle已经被设置
+    vTaskDelay(pdMS_TO_TICKS(100));
     xTimerStart(xTimerCreate("ie_task_timer_50", TIMER_50MS, 1, 0, ie_task_timer_50ms_cb), 1000);
 
     for (;;)

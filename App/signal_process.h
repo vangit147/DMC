@@ -26,32 +26,17 @@
 //#include "ie_task.h"
 #include "../common/fir_config.h"
 #include "../common/iir_lowpass_filter.h"
+#include "../common/iir_highpass_filter.h"
 
 /* 宏定义 */
 // 角度转弧度系数 (π/180)，保留7位有效数字
 #define DEG_TO_RAD 0.0174533f
 
-// 带通滤波器中心频率定义
-#define FIR_BAND_50_512_025_120_CENTER 0.8f  // 0.25-1.2Hz带通中心频率
-#define FIR_BAND_50_512_070_170_CENTER 1.2f  // 0.7-1.7Hz带通中心频率
-#define FIR_BAND_50_512_120_220_CENTER 1.7f  // 1.2-2.2Hz带通中心频率
-#define FIR_BAND_50_512_170_270_CENTER 2.2f  // 1.7-2.7Hz带通中心频率
-#define FIR_BAND_50_512_220_320_CENTER 2.7f  // 2.2-3.2Hz带通中心频率
-#define FIR_BAND_50_512_270_370_CENTER 3.2f  // 2.7-3.7Hz带通中心频率
-#define FIR_BAND_50_512_320_420_CENTER 3.7f  // 3.2-4.2Hz带通中心频率
+// 高通滤波器起始通过频率定义
+#define HPF_THRESHOLD 0.15f  // 当转速大于0.15Hz时，要进行高通滤波
+#define LPF_THRESHOLD 0.15f  // 当转速小于0.15Hz时，要进行低通滤波
 
-// 低通滤波器截止频率定义
-#define FIR_LOW_50_512_200_CHEB_CENTER 20.0f // 20Hz低通截止频率
-#define FIR_LOW_50_512_040_CHEB_CENTER 0.4f // 0.4Hz低通截止频率
-#define LPF_TO_BPF 0.3f // 低通向带通切换的边界频率
-#define BPF_TO_LPF 0.3f // 带通向低通切换的边界频率
-
-// 低通-带通切换迟滞
-#define HYSTERESIS_HIGH 0.02f        // 低通向带通切换的迟滞
-#define HYSTERESIS_LOW 0.05f         // 带通向低通切换的迟滞
-#define HYSTERESIS_BAND 0.05f         // 带通滤波器之间的迟滞
-
-#define BAND_SWITCH_THRESHOLD 0.25f        // 离开带通中心频率的距离阈值
+#define LPF_DISTANCE 0.25f // 距离阈值，其他所适用的低通滤波器的截止频率-实际频率要大于这个值
 
 
 /* 类型定义 */
@@ -87,7 +72,8 @@ typedef struct {
     float ax_raw_offset;                 // ax轴:温度补偿+装配误差补偿后的x轴加速度原始值
     float ay_raw_offset;                 // ay轴:温度补偿+装配误差补偿后的y轴加速度原始值
     float az_raw_offset;                 // az轴:温度补偿+装配误差补偿后的z轴加速度原始值
-    FIR_FilterType current_filter_type;  // 当前使用的滤波器类型
+    FIR_Lowpass_100_FilterType current_filter_type;  // 当前使用的低通滤波器类型
+    iir_highpass_100_filter_type_t current_hpf_filter_type;  // 当前使用的高通滤波器类型
 } sensor_signal_t;
 
 // 滤波后的信号结构体

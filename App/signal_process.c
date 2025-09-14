@@ -42,19 +42,23 @@
 //#include "../Common/fir_config.h"  // 添加FIR滤波器配置头文件
 //#include "IS25LP032_flash.h"  // 添加Flash存储头文件
 
-// 采样率提升说明
-// 从20Hz提升到50Hz的好处：
-// 1. 归一化频率更小，滤波器过渡带更陡峭
-// 2. 512阶切比雪夫窗滤波器性能显著提升
-// 3. 阻带衰减从100dB提升到120dB+
-// 4. 通带纹波从1dB降低到0.5dB
-// 5. 系统响应速度提升2.5倍
+// 采样率提升:20->50->100Hz
+
 
 // 任务句柄
 TaskHandle_t signal_process_task_handle;                        // 将static改为全局变量
 
 // 事件定义
-#define EVENT_SIGNAL_PROCESS_20MS_TIMER 0x02000000              //20ms定时器事件 (50Hz采样率)
+#define EVENT_SIGNAL_PROCESS_10MS_TIMER 0x02000000              //10ms定时器事件 (100Hz采样率)
+
+// 信号处理任务执行时间
+uint32_t process_time_signal_process1=0;
+uint32_t process_time_signal_process2=0;
+uint32_t process_time_signal_process3=0;
+uint32_t process_time_signal_process4=0;
+uint32_t process_time_signal_process5=0;
+uint32_t process_time_signal_process6=0;
+
 
 // z轴陀螺仪延时
 #define GZ_DELAY_SIZE 200  // 220点延时略微提前
@@ -79,6 +83,36 @@ typedef struct {
 } optimized_delay_t;
 
 static optimized_delay_t gz_optimized_delay;
+
+// 新增：X/Y/Z轴加速度计专用8阶IIR低通滤波器实例
+static iir_lowpass_filter_8th_t iir_acc_x_lpf_filter;           // X轴加速度计8阶IIR低通滤波器
+static iir_lowpass_filter_8th_t iir_acc_y_lpf_filter;           // Y轴加速度计8阶IIR低通滤波器
+static iir_lowpass_filter_8th_t iir_acc_z_lpf_filter;           // Z轴加速度计8阶IIR低通滤波器
+
+
+
+// 新增：X/Y轴加速度计专用16阶IIR高通滤波器实例（用于级联滤波计算），截止频率不同
+static iir_highpass_filter_16th_t iir_acc_x_highpass_filters[IIR_HIGHPASS_100_TYPE_COUNT];  // X轴9个高通滤波器
+static iir_highpass_filter_16th_t iir_acc_y_highpass_filters[IIR_HIGHPASS_100_TYPE_COUNT];  // Y轴9个高通滤波器
+
+// 高通滤波器截止频率定义（10个频率）
+static const iir_highpass_100_filter_type_t highpass_filter_types[IIR_HIGHPASS_100_TYPE_COUNT] = {
+    IIR_HIGHPASS_100_005_HZ,  // 0.05Hz
+    IIR_HIGHPASS_100_020_HZ,  // 0.2Hz
+    IIR_HIGHPASS_100_030_HZ,  // 0.3Hz
+    IIR_HIGHPASS_100_050_HZ,  // 0.5Hz
+    IIR_HIGHPASS_100_070_HZ,  // 0.7Hz
+    IIR_HIGHPASS_100_120_HZ,  // 1.2Hz
+    IIR_HIGHPASS_100_170_HZ,  // 1.7Hz
+    IIR_HIGHPASS_100_220_HZ,  // 2.2Hz
+    IIR_HIGHPASS_100_270_HZ,  // 2.7Hz
+    IIR_HIGHPASS_100_320_HZ   // 3.2Hz
+};
+
+
+// 高通滤波器输出缓冲区
+static float32_t highpass_x_outputs[IIR_HIGHPASS_100_TYPE_COUNT];
+static float32_t highpass_y_outputs[IIR_HIGHPASS_100_TYPE_COUNT];
 
 void init_optimized_delay(optimized_delay_t *delay) {
     memset(delay, 0, sizeof(optimized_delay_t));
@@ -134,12 +168,6 @@ float32_t compensate_delay_optimized(float32_t input) {
 }
 
 
-
-// 新的ax、ay轴信号处理函数（使用4阶IIR低通滤波） 25/08/27 Gordon Li
-// 新增：X/Y轴加速度计专用4阶IIR低通滤波器实例
-static iir_lowpass_filter_4th_t iir_acc_x_lpf_filter;           // X轴加速度计4阶IIR低通滤波器
-static iir_lowpass_filter_4th_t iir_acc_y_lpf_filter;           // Y轴加速度计4阶IIR低通滤波器
-static iir_lowpass_filter_4th_t iir_acc_z_lpf_filter;           // Z轴加速度计4阶IIR低通滤波器
 
 
  /*
@@ -278,17 +306,22 @@ void signal_process_init(void)
     // 初始化ARM FIR滤波器
     fir_init_all();
 
-    // 初始化Z轴加速度计专用4阶IIR低通滤波器
-    iir_lowpass_filter_4th_init(&iir_acc_z_lpf_filter);
+    // 初始化Z轴加速度计专用8阶IIR低通滤波器
+    iir_lowpass_filter_8th_init(&iir_acc_z_lpf_filter);
 
-    // 初始化X/Y轴加速度计专用4阶IIR低通滤波器
-    iir_lowpass_filter_4th_init(&iir_acc_x_lpf_filter);
-    iir_lowpass_filter_4th_init(&iir_acc_y_lpf_filter);
+    // 初始化X/Y轴加速度计专用8阶IIR低通滤波器
+    iir_lowpass_filter_8th_init(&iir_acc_x_lpf_filter);
+    iir_lowpass_filter_8th_init(&iir_acc_y_lpf_filter);
 
+    // 初始化x/y轴加速度计专用16阶IIR高通滤波器
+    for (int i = 0; i < IIR_HIGHPASS_100_TYPE_COUNT; i++) {
+        iir_highpass_filter_16th_init(&iir_acc_x_highpass_filters[i], highpass_filter_types[i]);
+        iir_highpass_filter_16th_init(&iir_acc_y_highpass_filters[i], highpass_filter_types[i]);
+    }
 
-    // 初始化当前滤波器类型为默认的0.3Hz低通切比雪夫窗512阶 (50Hz采样率)
-    sensor_signal.current_filter_type = FIR_LOW_50_512_040_CHEB;  // 使用512阶切比雪夫窗滤波器
-    //sensor_signal.current_filter_type = FIR_LOW_20_050_BMW;  // 原来的布莱克曼窗滤波器
+    // 初始化当前滤波器类型为默认的0.1Hz低通切比雪夫窗512阶 (100Hz采样率)
+    sensor_signal.current_filter_type = FIR_LOW_100_512_010_CHEB;  // 使用100Hz采样率
+    sensor_signal.current_hpf_filter_type = IIR_HIGHPASS_100_000_HZ;  // 使用100Hz采样率
 
     // 初始化用于陀螺仪Z轴的16选8中位数滤波器和混合延时补偿器
     init_optimized_delay(&gz_optimized_delay);
@@ -402,7 +435,8 @@ void signal_process_fir_filter(void)
     sensor_signal.ax_raw_offset = sensor_signal.ax_raw_fit - ax_offset_in_raw;
     sensor_signal.ay_raw_offset = sensor_signal.ay_raw_fit - ay_offset_in_raw;
     sensor_signal.az_raw_offset = sensor_signal.az_raw_fit - az_offset_in_raw;
- 
+
+    uint32_t start_time = xTaskGetTickCount();
     // 2.处理陀螺仪和加速度计的滤波
     // 2.1 陀螺仪Z轴：使用20Hz切比雪夫滤波器或8选4中位数滤波器+延时补偿器
  //   fir_switch_type(FIR_LOW_50_512_200_CHEB);
@@ -410,105 +444,88 @@ void signal_process_fir_filter(void)
     filtered_sensor_signal.gz_raw = compensate_delay_optimized(sensor_signal.gz_raw);
     filtered_sensor_signal.gz_dps = (float)(filtered_sensor_signal.gz_raw - algorithm_setting.gz_bias)* algorithm_setting.gz_scale;
 
-    // 2.2 加速度计Z轴：使用4阶IIR低通滤波器替代FIR滤波器（节省RAM）
+    // 2.2 加速度计Z轴：使用8阶IIR低通滤波器替代FIR滤波器（节省RAM）
     // 使用4阶IIR低通滤波器（0.12Hz截止频率，适合Z轴缓慢变化）
-    filtered_sensor_signal.az_raw = iir_lowpass_filter_4th_process(&iir_acc_z_lpf_filter, sensor_signal.az_raw_offset);
+    filtered_sensor_signal.az_raw = iir_lowpass_filter_8th_process(&iir_acc_z_lpf_filter, sensor_signal.az_raw_offset);
 
-    // 2.3 新增：为X/Y轴加速度计增加始终通过4阶IIR低通滤波的信号通道 25/08/27 Gordon Li
+    // 2.3 新增：为X/Y轴加速度计增加始终通过8阶IIR低通滤波的信号通道 25/08/27 Gordon Li
     // 这些信号始终使用低通滤波，不受动态滤波器切换影响，适用于需要稳定低通滤波的场景
-    filtered_sensor_signal.ax_raw_lpf = iir_lowpass_filter_4th_process(&iir_acc_x_lpf_filter, sensor_signal.ax_raw_offset);
-    filtered_sensor_signal.ay_raw_lpf = iir_lowpass_filter_4th_process(&iir_acc_y_lpf_filter, sensor_signal.ay_raw_offset);
+    filtered_sensor_signal.ax_raw_lpf = iir_lowpass_filter_8th_process(&iir_acc_x_lpf_filter, sensor_signal.ax_raw_offset);
+    filtered_sensor_signal.ay_raw_lpf = iir_lowpass_filter_8th_process(&iir_acc_y_lpf_filter, sensor_signal.ay_raw_offset);
 
-    // 3.动态选择加速度计X/Y的滤波器
+    process_time_signal_process1=xTaskGetTickCount()-start_time;
+    start_time = xTaskGetTickCount();
+
+// 3.动态选择加速度计X/Y的滤波器
     float rotation_freq = fabs(filtered_sensor_signal.gz_dps / 360.0f);
-    FIR_FilterType target_filter = FIR_LOW_50_512_040_CHEB; // 默认0.4Hz切比雪夫窗512阶低通 (50Hz采样率)
+    // 3.1 选出目标滤波器，低通上限
+    // 转速越高，需要的截止频率越高，以保留更多高频振动信息
+    FIR_Lowpass_100_FilterType target_filter = select_fir_lowpass_filter_type(rotation_freq);
 
-    // 3.1 选出目标滤波器
-    if (rotation_freq > LPF_TO_BPF && rotation_freq <= FIR_BAND_50_512_025_120_CENTER + BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_025_120_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_025_120_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_070_170_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_070_170_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_070_170_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_120_220_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_120_220_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_120_220_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_170_270_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_170_270_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_170_270_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_220_320_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_220_320_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_220_320_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_270_370_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_270_370_CHEB;
-    }
-    else if (rotation_freq > FIR_BAND_50_512_270_370_CENTER + BAND_SWITCH_THRESHOLD && rotation_freq <= FIR_BAND_50_512_320_420_CENTER+BAND_SWITCH_THRESHOLD) {
-        target_filter = FIR_BAND_50_512_320_420_CHEB;
-    }
-    else {
-        target_filter = FIR_LOW_50_512_040_CHEB;
-    }
-
-    // 3.2 迟滞机制
+    // 3.2 迟滞机制 - 避免频繁切换
     bool switch_or_not = true;
+    float current_cutoff = 0.0f;
+    float target_cutoff = 0.0f;
 
-    if (sensor_signal.current_filter_type == FIR_LOW_50_512_040_CHEB && target_filter >= FIR_BAND_50_512_025_120_CHEB)
-    { // 低通向带通的切换
-        if (rotation_freq < LPF_TO_BPF+HYSTERESIS_HIGH)
-        {
-            switch_or_not = false;
-        }
-    }
-    else if (sensor_signal.current_filter_type >= FIR_BAND_50_512_025_120_CHEB && target_filter == FIR_LOW_50_512_040_CHEB)
-    { // 带通向低通的切换
-        if (rotation_freq > BPF_TO_LPF-HYSTERESIS_LOW)
-        {
-            switch_or_not = false;
-        }
-    }
-
-
-    // 带通滤波器之间的迟滞机制
-    else if (target_filter == sensor_signal.current_filter_type)
-    {
+    // 如果当前滤波器和目标滤波器相同，不切换
+    if (sensor_signal.current_filter_type == target_filter) {
         switch_or_not = false;
     }
-    else
-    {
+    else {
+        // 计算当前滤波器和目标滤波器的截止频率
+        // 获取当前滤波器截止频率
+        current_cutoff = fir_get_cutoff_freq(sensor_signal.current_filter_type);
 
-        // 计算当前滤波器的中心频率
-        float current_center_freq = 0.0f;
-        switch(sensor_signal.current_filter_type) {
-            case FIR_BAND_50_512_025_120_CHEB: current_center_freq = FIR_BAND_50_512_025_120_CENTER; break;
-            case FIR_BAND_50_512_070_170_CHEB: current_center_freq = FIR_BAND_50_512_070_170_CENTER; break;
-            case FIR_BAND_50_512_120_220_CHEB: current_center_freq = FIR_BAND_50_512_120_220_CENTER; break;
-            case FIR_BAND_50_512_170_270_CHEB: current_center_freq = FIR_BAND_50_512_170_270_CENTER; break;
-            case FIR_BAND_50_512_220_320_CHEB: current_center_freq = FIR_BAND_50_512_220_320_CENTER; break;
-            case FIR_BAND_50_512_270_370_CHEB: current_center_freq = FIR_BAND_50_512_270_370_CENTER; break;
-            case FIR_BAND_50_512_320_420_CHEB: current_center_freq = FIR_BAND_50_512_320_420_CENTER; break;
-            default: current_center_freq = 0.0f; break;
-        }
+        // 获取目标滤波器截止频率
+        target_cutoff = fir_get_cutoff_freq(target_filter);
 
-        // 只有信号频率比当前滤波器的中心频率>0.3Hz时才切换
-        if ( fabs(rotation_freq - current_center_freq) <= BAND_SWITCH_THRESHOLD)
-        {
+        // 迟滞判断：只有当频率变化超过阈值时才切换
+        float freq_diff = fabs(target_cutoff - current_cutoff);
+        if (freq_diff < 0.1f) {  // 0.1Hz的迟滞阈值
             switch_or_not = false;
         }
     }
 
     // 4 动态切换X/Y轴滤波器（仅在需要时切换）
-    if (target_filter != sensor_signal.current_filter_type && switch_or_not)
-    {
+    if (target_filter != sensor_signal.current_filter_type && switch_or_not) {
         fir_switch_type(target_filter);
         sensor_signal.current_filter_type = target_filter;
     }
 
+    process_time_signal_process2=xTaskGetTickCount()-start_time;
 
+    start_time = xTaskGetTickCount();
     // 5. 对x，y轴加速度计进行滤波
     arm_fir_f32(&fir_acc_x_instance, &sensor_signal.ax_raw_offset, &filtered_sensor_signal.ax_raw, 1);
+
+    process_time_signal_process3=xTaskGetTickCount()-start_time;
+    start_time = xTaskGetTickCount();
     arm_fir_f32(&fir_acc_y_instance, &sensor_signal.ay_raw_offset, &filtered_sensor_signal.ay_raw, 1);
 
 
+
+    // 5.1 将FIR滤波后的信号同时输入给8个高通滤波器
+    process_time_signal_process4=xTaskGetTickCount()-start_time;
+    start_time = xTaskGetTickCount();
+    for (int i = 0; i < IIR_HIGHPASS_100_TYPE_COUNT; i++) {
+        highpass_x_outputs[i] = iir_highpass_filter_16th_process(&iir_acc_x_highpass_filters[i], filtered_sensor_signal.ax_raw);
+        highpass_y_outputs[i] = iir_highpass_filter_16th_process(&iir_acc_y_highpass_filters[i], filtered_sensor_signal.ay_raw);
+    }
+
+    process_time_signal_process5=xTaskGetTickCount()-start_time;
+    start_time = xTaskGetTickCount();
+     // 5.2 根据旋转频率选择合适的高通滤波器输出
+    if(rotation_freq > HPF_THRESHOLD) {
+        iir_highpass_100_filter_type_t selected_highpass_type = select_highpass_filter_type(rotation_freq);
+        sensor_signal.current_hpf_filter_type = selected_highpass_type;  // 使用100Hz采样率
+        // 使用选中的高通滤波器输出
+        if(selected_highpass_type != IIR_HIGHPASS_100_000_HZ) {
+            filtered_sensor_signal.ax_raw = highpass_x_outputs[selected_highpass_type];
+            filtered_sensor_signal.ay_raw = highpass_y_outputs[selected_highpass_type];
+        }
+    }
+
+    process_time_signal_process6=xTaskGetTickCount()-start_time;
 
    // 6.调用imu函数，对加速度计进行misalignment补偿和scale计算
     imu();   
@@ -524,9 +541,6 @@ void update_sensor_data(void)
     sensor_data.ax_g = filtered_sensor_signal.ax_g;
     sensor_data.ay_g = filtered_sensor_signal.ay_g;
     sensor_data.az_g = filtered_sensor_signal.az_g;
-
-    sensor_data.ax_lpf_g = filtered_sensor_signal.ax_g_lpf;
-    sensor_data.ax_lpf_g = filtered_sensor_signal.ay_g_lpf;
 
     // 新增：X/Y轴加速度计专用4阶IIR低通滤波器实例 25/08/27 Gordon Li
     sensor_data.ax_lpf_g = filtered_sensor_signal.ax_g_lpf;
@@ -551,41 +565,24 @@ void update_sensor_data(void)
 //    sensor_data.ay_cf_g = filtered_sensor_signal.ay_g;
 //    sensor_data.az_cf_g = filtered_sensor_signal.az_g;
 
-#if 0
-    uint32_t tail_flag = 0x7f800000;
-    float debug_data[7];
 
-
-    debug_data[0] = sensor_data.ax_g;
-    debug_data[1] = sensor_data.ax_cf_g;
-		debug_data[2] = sensor_data.ay_g;
-    debug_data[3] = sensor_data.ay_cf_g;
-		//debug_data[4] = algorithm_data.inc1;
-    //debug_data[5] = algorithm_data.inc2;
-    //debug_data[6] = algorithm_data.inc3;
-
-
-
-    LPUART0_send((uint8_t*)debug_data, 28);
-    LPUART0_send((uint8_t*)&tail_flag, 4);
-#endif
 }
 
 
 
 /**
   *******************************************************************************
-  * @Description: 20ms定时器回调函数 (50Hz采样率)
+  * @Description: 10ms定时器回调函数 (100Hz采样率)
   * @Parameters : xTimer - 定时器句柄
   * @RetValue   : 无
-  * @Note       : 通知任务处理定时事件，提升采样率到50Hz
+  * @Note       : 通知任务处理定时事件，提升采样率到100Hz
   * @CreatedBy  : AI Assistant
   * @ModifiedDate: 2025.08.26
   *******************************************************************************
   */
-static void signal_process_20ms_timer_cb(TimerHandle_t xTimer)
+static void signal_process_10ms_timer_cb(TimerHandle_t xTimer)
 {
-    xTaskGenericNotify(signal_process_task_handle, EVENT_SIGNAL_PROCESS_20MS_TIMER, eSetBits, NULL);
+    xTaskGenericNotify(signal_process_task_handle, EVENT_SIGNAL_PROCESS_10MS_TIMER, eSetBits, NULL);
 }
 
 /**
@@ -600,18 +597,18 @@ static void signal_process_20ms_timer_cb(TimerHandle_t xTimer)
   */
 void signal_process_task(void *p)
 {
-    TimerHandle_t signal_process_20ms_timer = NULL;
+    TimerHandle_t signal_process_10ms_timer = NULL;
     
-    // 创建20ms定时器 (50Hz采样率)
-    signal_process_20ms_timer = xTimerCreate("signal_process_20ms_timer",
-                                            pdMS_TO_TICKS(20),
+    // 创建10ms定时器 (100Hz采样率)
+    signal_process_10ms_timer = xTimerCreate("signal_process_10ms_timer",
+                                            pdMS_TO_TICKS(10),
                                             pdTRUE,
                                             (void *)0,
-                                            signal_process_20ms_timer_cb);
+                                            signal_process_10ms_timer_cb);
     
-    if(signal_process_20ms_timer != NULL)
+    if(signal_process_10ms_timer != NULL)
     {
-        xTimerStart(signal_process_20ms_timer, 0);
+        xTimerStart(signal_process_10ms_timer, 0);
     }
     
     for(;;)
@@ -620,8 +617,8 @@ void signal_process_task(void *p)
         uint32_t event = 0;
         xTaskNotifyWait(0, 0xFFFFFFFF, &event, portMAX_DELAY);
         
-        // 处理20ms定时器事件 (50Hz采样率)
-        if(event & EVENT_SIGNAL_PROCESS_20MS_TIMER)
+        // 处理10ms定时器事件 (100Hz采样率)
+        if(event & EVENT_SIGNAL_PROCESS_10MS_TIMER)
         {
             select_signal_source_and_update();
             signal_process_fir_filter();

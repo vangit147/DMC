@@ -34,7 +34,7 @@ extern "C"
 /* 宏定义 */
 #define DEG_TO_RAD 0.0174533f  // 角度转弧度系数 (π/180)，保留7位有效数字
 #define GZ_STD_SNAPSHOT_LEN 200 /* 高边数据快照长度 */
-#define SAMPLE_LEN 20 /* 标准差样本距离 */
+#define SAMPLE_LEN 40 /* 标准差样本距离 */
 
 /* 类型定义 */
 // 算法信息结构体
