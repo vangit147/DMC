@@ -536,9 +536,10 @@ static void on_100ms_timer_event(void)
     // 注释掉原来的调用
     // checking_vibrating_gpio();
     
-    // 根据振动状态更新开泵状态
+    // 根据振动状态和旋转状态更新开泵状态
     // 振动状态为1表示开泵中，振动状态为0表示停泵中
-    pumping = (vibration_status == 1) ? true : false;
+    // 修改：振动状态判断需要或上旋转状态（振动OR旋转）
+    pumping = (vibration_status == 1) || algorithm_data.rotating;
 
     //1.记录日志
     log_period++; 
