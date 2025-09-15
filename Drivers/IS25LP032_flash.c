@@ -50,7 +50,7 @@ FLASH 数据区定义 (总容量: 4MB = 4,194,304字节)
 +--------------------------+
 |     LOG CONTEXT    (8K)  | 0x00004000 - 0x00005FFF
 +--------------------------+
-|          LOG             | 0x00006000 - 0x3FFFFFFF (约33,828条日志，每条124字节)
+|          LOG             | 0x00006000 - 0x3FFFFFFF (约30,659条日志，每条136字节)
 +--------------------------+
 
 */
@@ -339,7 +339,7 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 
         rd_index = log_context.log_write_index + 1 - log_context.log_to_be_read_count;
         log_context.log_to_be_read_count--;
-        // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约33,628条日志)
+        // 循环缓冲区：如果读取索引为负，需要加上最大容量 (约30,659条日志，每条136字节)
         if (rd_index < 0)
             rd_index += LOG_FLASH_SIZE / sizeof(log_t);
         flash_address += sizeof(log_t) * rd_index;
@@ -399,14 +399,14 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
    *               关键范围值含义：
  *               - LOG_FLASH_ADDRESS: 0x00006000 (日志数据起始地址)
  *               - LOG_FLASH_SIZE: 0x3FA00000 (4,169,728字节，实际日志存储空间)
- *               - LOG_FLASH_SIZE / sizeof(log_t): 约33,628条日志记录 (每条日志124字节)
+ *               - LOG_FLASH_SIZE / sizeof(log_t): 约30,659条日志记录 (每条日志136字节)
  *               - 日志结构体详细组成：
  *                 * 基础信息: 8字节 (时间戳、保留字段)
  *                 * 传感器数据: 24字节 (三轴加速度、三轴角速度)
  *                 * 倾角数据: 36字节 (倾角1/2/6的最大/最小/平均值)
  *                 * 虚拟半径数据: 16字节 (X/Y半径最小/最大值)
  *                 * 系统状态数据: 20字节 (高边、Z轴角速度统计、温度)
- *                 * 统计计算和电源数据: 20字节 (标准差、标志位、电池电压、CRC16)
+ *                 * 统计计算和电源数据: 32字节 (标准差、振动检测、标志位、电池电压、CRC16)
  *               - 日志采用循环缓冲区，当写满后覆盖最早的记录
 
   * @CreatedBy  : YangHaifeng
@@ -454,7 +454,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
 
     // 成功写入一条log
     log_context.log_total_count++;
-    // 限制总日志数量不超过最大容量 (约33,628条)
+    // 限制总日志数量不超过最大容量 (约30,659条)
     if (log_context.log_total_count > LOG_FLASH_SIZE / sizeof(log_t))
         log_context.log_total_count = LOG_FLASH_SIZE / sizeof(log_t);
     log_context.log_to_be_read_count++;

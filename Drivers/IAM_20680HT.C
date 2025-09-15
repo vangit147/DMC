@@ -200,7 +200,7 @@ static int32_t iam_20680ht_init(void)
     0                       6           5.1             7.8             1
     0                       7           420.0           441.6           1
     */
-    reg_val = 6; // set the frequency of the DLPF of the  to 5 Hz
+    reg_val = 4; // set the frequency of the DLPF of the accelerometer to 21.2 Hz
     iam_20680ht_write_reg(ACCEL_CONFIG_2, reg_val, 1);
 
     /*

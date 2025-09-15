@@ -22,10 +22,20 @@ extern "C"
 #include "main.h"
 #include "cpu.h"
 
+/* 振动标志位定义 */
+#define VIBRATION_FLAG_DRILLING_MASK    0x01    // 钻进状态位掩码
+#define VIBRATION_FLAG_ROTATING_MASK    0x02    // 旋转状态位掩码
+#define VIBRATION_FLAG_GPIO_MASK        0x04    // GPIO振动检测位掩码
+
+/* 振动标志位操作宏 */
+#define SET_DRILLING_FLAG(flag)         ((flag) |= VIBRATION_FLAG_DRILLING_MASK)
+#define SET_ROTATING_FLAG(flag)         ((flag) |= VIBRATION_FLAG_ROTATING_MASK)
+#define SET_GPIO_VIBRATION_FLAG(flag)   ((flag) |= VIBRATION_FLAG_GPIO_MASK)
+
     /**
-     * @brief 日志数据结构体 (总大小: 124字节)
+     * @brief 日志数据结构体 (总大小: 136字节)
      * @note 使用__packed属性确保结构体紧凑排列，无填充字节
-     * @details 包含传感器数据、倾角信息、虚拟半径、系统状态等完整信息
+     * @details 包含传感器数据、倾角信息、虚拟半径、系统状态、振动检测等完整信息
      */
     typedef __packed struct _log_
     {
@@ -72,9 +82,15 @@ extern "C"
         /* 电源数据 (4字节) */
         float s_f32_36V;            // 4字节 - 电池电压值
 
-        /* 标志位（保留给振动使用的） (4字节) */
-        uint32_t flag;              // 4字节 - 系统标志位
+        /* 振动检测标准差统计 (12字节) */
+        float std_v_norm_g_max;     // 4字节 - 振动标准差最大值
+        float std_v_norm_g_min;     // 4字节 - 振动标准差最小值
+        float std_v_norm_g_avg;     // 4字节 - 振动标准差平均值
 
+        /* 振动标志位 (4字节) */
+        uint32_t flag;              // 4字节 - 振动检测标志位
+
+        /* 保留字段 (2字节) */
         int16_t reserved1[1];       // 2字节 - 保留字段1
         uint16_t crc16;             // 2字节 - CRC16校验值
     } log_t;

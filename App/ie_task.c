@@ -121,6 +121,20 @@ inclination_hs_t inc_hs_data;
 /* 算法信息结构体 */
 algorithm_info_t algorithm_data;
 
+/* 振动检测相关变量 */
+#define VIBRATION_BUFFER_SIZE 20  // 20个元素，对应1秒钟的数据（20Hz）
+static float vibration_buffer[VIBRATION_BUFFER_SIZE];  // 振动数据缓冲区
+static uint8_t vibration_buffer_index = 0;             // 缓冲区索引
+static bool vibration_buffer_full = false;             // 缓冲区是否已满
+static uint32_t vibration_sample_count = 0;            // 振动采样计数
+
+/* 钻进状态判断相关变量 */
+#define DRILLING_HISTORY_SIZE 10  // 10秒历史记录
+static float gz_avg_history[DRILLING_HISTORY_SIZE];    // z轴陀螺仪均值历史记录
+static float std_v_norm_g_history[DRILLING_HISTORY_SIZE]; // 振动标准差历史记录
+static uint8_t drilling_history_index = 0;             // 历史记录索引
+static bool drilling_history_full = false;              // 历史记录是否已满
+
 /* EKF状态结构体 */
 static EKF_State ekf_state;
 
@@ -157,6 +171,13 @@ static void calculate_rotation_radius(float ax, float ay, float gz_dps, float gz
 static void qualify_by_variance(void);
 static void calibrate(void);
 static void ie_task_timer_50ms_cb(TimerHandle_t xTimer);
+
+/* 振动检测相关函数声明 */
+static void vibration_data_collect(void);
+static float calculate_vibration_std_dev(void);
+
+/* 钻进状态判断相关函数声明 */
+static void update_drilling_status(void);
 
 /* 公共函数声明 */
 void getRadiusOffset(float *ry, float *offsetX, float *offsetY, float *rx, float *yrLimit, float *xrLimit);
@@ -601,6 +622,35 @@ void interval_info_deal(bool period_end)
     else if (interval_info.c2_num_count < UINT16_MAX)
         interval_info.c2_num_count++;
 
+    // 更新振动标准差统计（每秒计算一次）
+    static uint32_t vibration_std_calc_count = 0;
+    vibration_std_calc_count++;
+
+    // 每20次（1秒）计算一次振动标准差
+    if (vibration_std_calc_count >= 20) {
+        float current_std = calculate_vibration_std_dev();
+
+        if (current_std > 0.0f) {  // 只有当缓冲区满时才更新统计
+            // 更新最大值
+            if (current_std > interval_info.std_v_norm_g_max)
+                interval_info.std_v_norm_g_max = current_std;
+
+            // 更新最小值（注意初始值的处理）
+            if (interval_info.std_v_norm_g_min == 0.0f || current_std < interval_info.std_v_norm_g_min)
+                interval_info.std_v_norm_g_min = current_std;
+
+            // 更新平均值
+            static uint32_t vibration_std_sample_count = 0;
+            vibration_std_sample_count++;
+            interval_info.std_v_norm_g_avg = (interval_info.std_v_norm_g_avg * (vibration_std_sample_count - 1) + current_std) / vibration_std_sample_count;
+        }
+
+        vibration_std_calc_count = 0;  // 重置计数器
+
+        // 更新钻进状态判断（每秒调用一次）
+        update_drilling_status();
+    }
+
     // 增加计数，并防止溢出
     if (interval_info.acc_count < UINT32_MAX) {
         interval_info.acc_count++;
@@ -864,6 +914,11 @@ void get_interval_info(interval_info_t* info)
     info->c0_num_count = interval_info.c0_num_count;
     info->c1_num_count = interval_info.c1_num_count;
     info->c2_num_count = interval_info.c2_num_count;
+
+    // 振动标准差统计
+    info->std_v_norm_g_max = interval_info.std_v_norm_g_max;
+    info->std_v_norm_g_min = interval_info.std_v_norm_g_min;
+    info->std_v_norm_g_avg = interval_info.std_v_norm_g_avg;
 }
 
 /**
@@ -918,6 +973,22 @@ void reset_interval_info(void)
     interval_info.c0_num_count = 0;
     interval_info.c1_num_count = 0;
     interval_info.c2_num_count = 0;
+
+    // 重置振动标准差统计
+    interval_info.std_v_norm_g_max = 0.0f;
+    interval_info.std_v_norm_g_min = 0.0f;
+    interval_info.std_v_norm_g_avg = 0.0f;
+
+    // 重置振动检测相关变量
+    vibration_buffer_index = 0;
+    vibration_buffer_full = false;
+    vibration_sample_count = 0;
+
+    // 重置钻进状态判断相关变量
+    drilling_history_index = 0;
+    drilling_history_full = false;
+    algorithm_data.drilling = false;
+    algorithm_data.rotating = false;
 }
 
 /**
@@ -1129,6 +1200,10 @@ void ie_task(void *p)
             calibrate();
             qualify_by_variance();
             compute_ie();
+
+            // 振动数据收集（每50ms收集一次，相当于20Hz）
+            vibration_data_collect();
+
             interval_info_deal(false);
 
              // 计算执行时间（微秒）
@@ -1142,4 +1217,148 @@ void ie_task(void *p)
     }
 }
 //START_TASK(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
+
+/**
+ * @brief 振动数据收集函数
+ * @note 每50ms调用一次，收集v_norm_g数据到缓冲区
+ */
+static void vibration_data_collect(void)
+{
+    // 将最新的v_norm_g数据放入缓冲区
+    vibration_buffer[vibration_buffer_index] = sensor_data.v_norm_g;
+
+    // 更新缓冲区索引
+    vibration_buffer_index++;
+    vibration_sample_count++;
+
+    // 检查缓冲区是否已满
+    if (vibration_buffer_index >= VIBRATION_BUFFER_SIZE) {
+        vibration_buffer_full = true;
+        vibration_buffer_index = 0;  // 循环使用缓冲区
+    }
+}
+
+/**
+ * @brief 计算振动标准差
+ * @return 标准差值，如果缓冲区未满则返回0
+ */
+static float calculate_vibration_std_dev(void)
+{
+    if (!vibration_buffer_full && vibration_sample_count < VIBRATION_BUFFER_SIZE) {
+        return 0.0f;  // 缓冲区未满，返回0
+    }
+
+    // 计算均值
+    float sum = 0.0f;
+    int count = vibration_buffer_full ? VIBRATION_BUFFER_SIZE : vibration_sample_count;
+
+    for (int i = 0; i < count; i++) {
+        sum += vibration_buffer[i];
+    }
+    float mean = sum / count;
+
+    // 计算方差
+    float variance_sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        float diff = vibration_buffer[i] - mean;
+        variance_sum += diff * diff;
+    }
+    float variance = variance_sum / count;
+
+    // 返回标准差
+    return sqrt(variance);
+}
+
+/**
+ * @brief 更新钻进状态判断
+ * @note 每1秒调用一次，判断是否在钻进状态
+ *       滞后机制：进入条件宽松，退出条件严格
+ *       进入：连续10秒中8秒满足条件 OR 连续10秒旋转
+ *       退出：连续10秒中所有10秒都不满足条件 AND 连续10秒不旋转
+ */
+static void update_drilling_status(void)
+{
+    // 计算当前秒的z轴陀螺仪均值（使用已有的gz_dps_avg）
+    float current_gz_avg = sensor_data.gz_dps;
+    float current_std_v_norm_g = 0.0f;
+
+    // 获取当前秒的振动标准差（如果缓冲区满的话）
+    if (vibration_buffer_full) {
+        current_std_v_norm_g = calculate_vibration_std_dev();
+    }
+
+    // 更新历史记录
+    gz_avg_history[drilling_history_index] = current_gz_avg;
+    std_v_norm_g_history[drilling_history_index] = current_std_v_norm_g;
+
+    // 更新索引
+    drilling_history_index++;
+    if (drilling_history_index >= DRILLING_HISTORY_SIZE) {
+        drilling_history_full = true;
+        drilling_history_index = 0;  // 循环使用
+    }
+
+    // 只有历史记录满了才开始判断
+    if (!drilling_history_full) {
+        algorithm_data.drilling = false;  // 历史记录未满，设为静态
+        return;
+    }
+
+    // 判断旋转条件：所有10秒的z轴陀螺仪均值都大于10dps(0.17rad/s)(0.6rpm)
+    bool is_rotating = true;
+    bool is_not_rotating = true;
+    for (int i = 0; i < DRILLING_HISTORY_SIZE; i++) {
+        if (gz_avg_history[i] <= 10.0f) {
+            is_rotating = false;
+        }
+        if (gz_avg_history[i] > 10.0f) {
+            is_not_rotating = false;
+        }
+    }
+
+    // 判断振动条件：10秒中有8秒的振动标准差大于0.1
+    int vibration_count = 0;
+    int no_vibration_count = 0;
+    for (int i = 0; i < DRILLING_HISTORY_SIZE; i++) {
+        if (std_v_norm_g_history[i] > 0.1f) {
+            vibration_count++;
+        }
+        if (std_v_norm_g_history[i] <= 0.1f) {
+            no_vibration_count++;
+        }
+    }
+    bool is_vibrating = (vibration_count >= 8);
+    bool is_not_vibrating = (no_vibration_count >= 10);  // 所有10秒都不振动
+
+    // 更新旋转状态（直接保存，供其他任务调用）
+    algorithm_data.rotating = is_rotating;
+
+    // ==================== 钻进状态判断逻辑 ====================
+    // 基于滞后机制：进入宽松，退出严格，避免频繁切换
+    //
+    // 状态转换表：
+    // 当前状态 | 旋转 | 振动 | 不旋转 | 不振动 | 结果
+    // 不在钻进 | ✓ | ✗ | ✗ | ✗ | 进入钻进（旋转满足）
+    // 不在钻进 | ✗ | ✓ | ✗ | ✗ | 进入钻进（振动满足）
+    // 不在钻进 | ✗ | ✗ | ✓ | ✓ | 保持静态
+    // 在钻进   | ✓ | ✗ | ✗ | ✗ | 保持钻进（旋转持续）
+    // 在钻进   | ✗ | ✓ | ✗ | ✗ | 保持钻进（振动持续）
+    // 在钻进   | ✗ | ✗ | ✓ | ✗ | 保持钻进（振动仍存在）
+    // 在钻进   | ✗ | ✗ | ✗ | ✓ | 保持钻进（旋转仍存在）
+    // 在钻进   | ✗ | ✗ | ✓ | ✓ | 退出钻进（两个条件都满足）
+    // =========================================================
+
+    static bool was_drilling = false;  // 记录上一秒的钻进状态
+
+    if (!was_drilling) {
+        // 进入条件（宽松）：旋转 OR 振动，只要有一个满足就进入
+        algorithm_data.drilling = (is_rotating || is_vibrating);
+    } else {
+        // 退出条件（严格）：必须连续10秒不旋转 AND 连续10秒不振动
+        algorithm_data.drilling = !(is_not_rotating && is_not_vibrating);
+    }
+
+    // 更新状态记录
+    was_drilling = algorithm_data.drilling;
+}
 #endif /* IE_TASK_C */

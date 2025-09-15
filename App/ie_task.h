@@ -88,6 +88,10 @@ typedef struct {
     float peace_time;                    /* 持续静止或匀速转动的最长时间 */
     bool peace_time_break;               /* 稳定时间中断标志 */
     bool peacetime_threshod_write_done;  /* 超过threshold的peatime计数标志 */
+
+    /* 钻进状态相关 */
+    bool drilling;                       /* 钻进状态标志：1表示在钻进，0表示静态（既不振动也不旋转） */
+    bool rotating;                       /* 独立旋转状态标志：1表示在旋转，0表示不旋转，可配合第三方振动开关来判断*/
 } algorithm_info_t;
 
 // 算法设置结构体
@@ -175,6 +179,11 @@ typedef struct
     uint16_t c0_num_count;
     uint16_t c1_num_count;
     uint16_t c2_num_count;
+
+    /* 振动检测标准差统计 */
+    float std_v_norm_g_max;    /* 振动标准差最大值 */
+    float std_v_norm_g_min;    /* 振动标准差最小值 */
+    float std_v_norm_g_avg;    /* 振动标准差平均值 */
 } interval_info_t;
 
 // 倾角高边结构体
@@ -221,6 +230,9 @@ typedef struct
     // 新增：X/Y轴加速度计专用4阶IIR低通滤波器实例
     float ax_lpf_g;    // ax轴：始终通过IIR低通滤波的原始信号
     float ay_lpf_g;    // ay轴：始终通过IIR低通滤波的原始信号
+
+    // 振动检测相关
+    float v_norm_g;    // 三轴加速度平方和的根（用于振动检测）
 } sensor_data_t;
 
 /* 全局变量声明 */

@@ -421,8 +421,8 @@ void send_msg(void)
         *p_uint8++ = 0x01;
         *p_uint8++ = 0x01;
 
-        output_buffer[3] = 144 >> 16 & 0xff;
-        output_buffer[4] = 144 & 0xff;
+        output_buffer[3] = 156 >> 16 & 0xff;
+        output_buffer[4] = 156 & 0xff;
 
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&year, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&mon, 4);
@@ -464,11 +464,14 @@ void send_msg(void)
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&vSupply, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.hs, 4);
         p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.flag, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.std_v_norm_g_max, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.std_v_norm_g_min, 4);
+        p_uint8 = toOutPutBuffer(p_uint8, (uint8_t *)&log.std_v_norm_g_avg, 4);
         *p_uint8++ = 0x54;
         *p_uint8++ = 0x02;
         *p_uint8++ = 0x55;
 
-        send_data_to_vd_tool(output_buffer, 63);
+        send_data_to_vd_tool(output_buffer, 75);
         isSend = 0;
     }
 
