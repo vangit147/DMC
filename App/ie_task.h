@@ -111,12 +111,12 @@ typedef struct
 
 
     /* 加速度计相关设置（顺序参考板间通信holdings 寄存器表格顺序，） */
-    float ms_xx; // X-X轴MS矩阵系数
-    float ms_xy; // X-Y轴MS矩阵系数
-    float ms_xz; // X-Z轴MS矩阵系数
-    float ms_yy; // Y-Y轴MS矩阵系数
-    float ms_yz; // Y-Z轴MS矩阵系数
-    float ms_zz; // Z-Z轴MS矩阵系数
+    double ms_xx; // X-X轴MS矩阵系数
+    double ms_xy; // X-Y轴MS矩阵系数
+    double ms_xz; // X-Z轴MS矩阵系数
+    double ms_yy; // Y-Y轴MS矩阵系数
+    double ms_yz; // Y-Z轴MS矩阵系数
+    double ms_zz; // Z-Z轴MS矩阵系数
     float ax_bias; // X轴加速度计零偏, raw_data
     float ay_bias; // Y轴加速度计零偏，raw_data
     float az_bias; // Z轴加速度计零偏，raw_data

@@ -190,7 +190,7 @@ static void ads1278_task(void* p)
 {
     ads1278_init();
 
-    xTimerStart(xTimerCreate("ads1278_task_timer_cb", 20, 1, 0, ads1278_task_timer_cb), 1000);
+    xTimerStart(xTimerCreate("ads1278_task_timer_cb", 4, 1, 0, ads1278_task_timer_cb), 1000);
     for(;;)
     {
         uint32_t notify;
