@@ -80,7 +80,10 @@ iir_highpass_100_filter_type_t select_highpass_filter_type(float32_t rotation_fr
 
 // FIR低通滤波器选择函数
 FIR_Lowpass_100_FilterType select_fir_lowpass_filter_type(float32_t rotation_freq);  // 根据旋转频率选择FIR低通滤波器类型
-float32_t fir_get_cutoff_freq(FIR_Lowpass_100_FilterType type);  // 获取FIR低通滤波器截止频率
+
+// FIR滤波器迟滞阈值函数
+float32_t fir_get_upgrade_threshold(FIR_Lowpass_100_FilterType current_type);    // 获取升级阈值
+float32_t fir_get_downgrade_threshold(FIR_Lowpass_100_FilterType current_type);  // 获取降级阈值
 #ifdef __cplusplus
 }
 #endif

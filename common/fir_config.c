@@ -156,28 +156,28 @@ iir_highpass_100_filter_type_t select_highpass_filter_type(float32_t rotation_fr
     else if(rotation_freq <= 0.3f) {
         return IIR_HIGHPASS_100_005_HZ;  // 0.05Hz
     }
-    else if(rotation_freq <= 0.4f) {
+    else if(rotation_freq <= 0.5f) {  //注意避开下一档的0.3Hz
         return IIR_HIGHPASS_100_020_HZ;  // 0.2Hz
     }
-    else if(rotation_freq <= 0.6f) {
+    else if(rotation_freq <= 0.6f) { //注意避开下一档的0.5Hz
         return IIR_HIGHPASS_100_030_HZ;  // 0.3Hz
     }
-    else if(rotation_freq <= 0.7f) {
+    else if(rotation_freq <= 0.9f) { //注意避开下一档的0.7Hz
         return IIR_HIGHPASS_100_050_HZ;  // 0.5Hz
     }
-    else if(rotation_freq <= 1.2f) {
+    else if(rotation_freq <= 1.5f) {//注意避开下一档的1.2Hz（需要跨过1.2Hz避免边缘衰减）
         return IIR_HIGHPASS_100_070_HZ;  // 0.7Hz
     }
-    else if(rotation_freq <= 1.7f) {
+    else if(rotation_freq <= 2.0f) {//注意避开下一档的1.7Hz（需要跨过1.7Hz避免边缘衰减）
         return IIR_HIGHPASS_100_120_HZ;  // 1.2Hz
     }
-    else if(rotation_freq <= 2.2f) {
+    else if(rotation_freq <= 2.5f) {//注意避开下一档的2.2Hz（需要跨过2.2Hz避免边缘衰减）
         return IIR_HIGHPASS_100_170_HZ;  // 1.7Hz
     }
-    else if(rotation_freq <= 2.7f) {
+    else if(rotation_freq <= 3.0f) {//注意避开下一档的2.2Hz（需要跨过2.2Hz避免边缘衰减）
         return IIR_HIGHPASS_100_220_HZ;  // 2.2Hz
     }
-    else if(rotation_freq <= 3.2f) {
+    else if(rotation_freq <= 3.5f) {//注意避开下一档的3.2Hz（需要跨过3.2Hz避免边缘衰减）
         return IIR_HIGHPASS_100_270_HZ;  // 2.7Hz
     }
     else if(rotation_freq <= 4.2f) {
@@ -196,37 +196,35 @@ iir_highpass_100_filter_type_t select_highpass_filter_type(float32_t rotation_fr
 FIR_Lowpass_100_FilterType select_fir_lowpass_filter_type(float32_t rotation_freq)
 {
     // FIR低通滤波器截止频率表（Hz）
-    static const float32_t fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_TYPE_COUNT] = {
-        0.1f, 0.7f, 1.2f, 1.7f, 2.2f, 2.7f, 3.2f, 3.7f, 4.2f
-    };
+//    static const float32_t fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_TYPE_COUNT] = {
+//        0.1f, 0.7f, 1.2f, 1.7f, 2.2f, 2.7f, 3.2f, 3.7f, 4.2f
+//    };
 
     // 低通滤波器阈值和距离定义
-    #define LPF_THRESHOLD 0.15f
-    #define LPF_DISTANCE 0.25f
 
     // 根据旋转频率选择FIR低通滤波器
-    if (rotation_freq <= LPF_THRESHOLD) {
+    if (rotation_freq <= 0.11f) {
         return FIR_LOW_100_512_010_CHEB;  // 0.1Hz截止频率，适合极低转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_070_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 0.4f) {
         return FIR_LOW_100_512_070_CHEB;  // 0.7Hz截止频率，适合低转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_120_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 0.9f) {
         return FIR_LOW_100_512_120_CHEB;  // 1.2Hz截止频率，适合中低转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_170_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 1.4f) {
         return FIR_LOW_100_512_170_CHEB;  // 1.7Hz截止频率，适合中转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_220_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 1.9f) {
         return FIR_LOW_100_512_220_CHEB;  // 2.2Hz截止频率，适合中高转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_270_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 2.4f) {
         return FIR_LOW_100_512_270_CHEB;  // 2.7Hz截止频率，适合高转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_320_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 2.9f) {
         return FIR_LOW_100_512_320_CHEB;  // 3.2Hz截止频率，适合很高转速
     }
-    else if (rotation_freq <= fir_lowpass_100hz_cutoff_freqs[FIR_LOW_100_512_370_CHEB] - LPF_DISTANCE) {
+    else if (rotation_freq <= 3.4f) {
         return FIR_LOW_100_512_370_CHEB;  // 3.7Hz截止频率，适合极高转速
     }
     else {
@@ -251,5 +249,61 @@ float32_t fir_get_cutoff_freq(FIR_Lowpass_100_FilterType type)
     }
 
     return fir_lowpass_100hz_cutoff_freqs[type];
+}
+
+/**
+ * @brief 获取当前滤波器的升级阈值（切换到更高档位的rotation_freq阈值）
+ * @param current_type 当前滤波器类型
+ * @return 升级阈值（Hz），如果已是最高档位则返回无穷大
+ */
+float32_t fir_get_upgrade_threshold(FIR_Lowpass_100_FilterType current_type)
+{
+    // 升级阈值表：对应select_fir_lowpass_filter_type函数中的判断条件
+    // 当rotation_freq超过这些阈值时，会切换到下一档更高的滤波器
+    static const float32_t upgrade_thresholds[FIR_LOW_100_512_TYPE_COUNT] = {
+        0.11f,  // FIR_LOW_100_512_010_CHEB -> FIR_LOW_100_512_070_CHEB
+        0.4f,   // FIR_LOW_100_512_070_CHEB -> FIR_LOW_100_512_120_CHEB
+        0.9f,   // FIR_LOW_100_512_120_CHEB -> FIR_LOW_100_512_170_CHEB
+        1.4f,   // FIR_LOW_100_512_170_CHEB -> FIR_LOW_100_512_220_CHEB
+        1.9f,   // FIR_LOW_100_512_220_CHEB -> FIR_LOW_100_512_270_CHEB
+        2.4f,   // FIR_LOW_100_512_270_CHEB -> FIR_LOW_100_512_320_CHEB
+        2.9f,   // FIR_LOW_100_512_320_CHEB -> FIR_LOW_100_512_370_CHEB
+        3.4f,   // FIR_LOW_100_512_370_CHEB -> FIR_LOW_100_512_420_CHEB
+        1000.0f // FIR_LOW_100_512_420_CHEB 已是最高档位，设为无穷大
+    };
+
+    if (current_type >= FIR_LOW_100_512_TYPE_COUNT) {
+        return 1000.0f;  // 无效类型，返回无穷大
+    }
+
+    return upgrade_thresholds[current_type];
+}
+
+/**
+ * @brief 获取当前滤波器的降级阈值（切换到更低档位的rotation_freq阈值）
+ * @param current_type 当前滤波器类型
+ * @return 降级阈值（Hz），如果已是最低档位则返回0
+ */
+float32_t fir_get_downgrade_threshold(FIR_Lowpass_100_FilterType current_type)
+{
+    // 降级阈值表：当rotation_freq低于这些阈值时，会切换到上一档更低的滤波器
+    // 基于select_fir_lowpass_filter_type函数的逆向逻辑
+    static const float32_t downgrade_thresholds[FIR_LOW_100_512_TYPE_COUNT] = {
+        0.0f,   // FIR_LOW_100_512_010_CHEB 已是最低档位
+        0.11f,  // FIR_LOW_100_512_070_CHEB -> FIR_LOW_100_512_010_CHEB
+        0.4f,   // FIR_LOW_100_512_120_CHEB -> FIR_LOW_100_512_070_CHEB
+        0.9f,   // FIR_LOW_100_512_170_CHEB -> FIR_LOW_100_512_120_CHEB
+        1.4f,   // FIR_LOW_100_512_220_CHEB -> FIR_LOW_100_512_170_CHEB
+        1.9f,   // FIR_LOW_100_512_270_CHEB -> FIR_LOW_100_512_220_CHEB
+        2.4f,   // FIR_LOW_100_512_320_CHEB -> FIR_LOW_100_512_270_CHEB
+        2.9f,   // FIR_LOW_100_512_370_CHEB -> FIR_LOW_100_512_320_CHEB
+        3.4f    // FIR_LOW_100_512_420_CHEB -> FIR_LOW_100_512_370_CHEB
+    };
+
+    if (current_type >= FIR_LOW_100_512_TYPE_COUNT) {
+        return 0.0f;  // 无效类型，返回0
+    }
+
+    return downgrade_thresholds[current_type];
 }
 

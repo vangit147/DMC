@@ -77,18 +77,18 @@
 #define NO_THRESHOLD 10        /* 标准差阈值 <10 */
 
 /* 距离阈值定义 */
-#define HARSH_DISTANCE 180     /* HARSH阈值对应的距离150 */
+#define HARSH_DISTANCE 180     /* HARSH阈值对应的距离150 ，此数值修改时需小于GZ_STD_SNAPSHOT_LEN*/
 #define MILD_DISTANCE 120      /* MILD阈值对应的距离 100*/
 #define LESS_DISTANCE 60      /* LESS阈值对应的距离 50*/
 #define NO_DISTANCE 40         /* NO阈值对应的距离20 */
 
 /* 权重值定义 */
-#define STD_DEV_PROPAGATION_FACTOR 0.001f /* 标准差传播因子 ，在线计算标准差时用于传播*/
+#define STD_DEV_PROPAGATION_FACTOR 0.005f /* 标准差传播因子 ，在线计算标准差时用于传播*/
 #define HARSH_WEIGHT_NEAR 0.00000001f  /* HARSH阈值近距离权重 */
 #define HARSH_WEIGHT_FAR 0.0001f        /* HARSH阈值远距离权重 */
-#define MILD_WEIGHT_NEAR 0.00000001f    /* MILD阈值近距离权重 */
+#define MILD_WEIGHT_NEAR 0.0000001f    /* MILD阈值近距离权重 */
 #define MILD_WEIGHT_FAR 0.0001f         /* MILD阈值远距离权重 */
-#define LESS_WEIGHT_NEAR 0.0000001f     /* LESS阈值近距离权重 */
+#define LESS_WEIGHT_NEAR 0.000001f     /* LESS阈值近距离权重 */
 #define LESS_WEIGHT_FAR 0.001f         /* LESS阈值远距离权重 */
 #define NO_WEIGHT 0.01f           /* NO阈值远距离权重 */
 

@@ -150,7 +150,7 @@ typedef struct
 // 区间信息结构体
 typedef struct
 {
-    uint32_t acc_count; /* 累加次数 约1000天@20ms执行一次*/
+    uint32_t acc_count; /* 累加次数 用于计算各种均值 约1000天@20ms执行一次*/
 
     /* 陀螺仪数据统计 */
     float gyro_z_dps_max; /* gz_dps最大值 */
