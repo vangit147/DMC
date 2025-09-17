@@ -18,6 +18,9 @@
 #include "uart_service.h"
 #include "main_task.h"
 #include "ie_task.h"
+
+// 外部函数声明
+extern void send_cutter_valve_test_pulse(uint8_t test_type);
 #include "ads1278_imu.h"
 #include "IAM_20680HT.h"
 #include "signal_process.h"
@@ -1092,6 +1095,31 @@ void send_msg(void)
         // 写入校准数据
         float calibration_data = atof((const char *)temp);
         is25pl032_flash_set_calibration_data(calibration_data);
+        isSend = 0;
+        goto ok;
+    }
+
+    // 剪切阀通信测试命令 CT=*
+    if (receiveMsg[0] == 'C' && receiveMsg[1] == 'T' && receiveMsg[2] == '=' && receiveMsg[3] != '?')
+    {
+        char *data = (char *)receiveMsg + 3;
+        uint8_t temp[8];
+        uint8_t tempIndex = 0;
+        uint8_t dataIndex = 0;
+
+        // 解析测试参数
+        tempIndex = 0;
+        while (data[dataIndex] != '\0' && tempIndex < 7)
+        {
+            temp[tempIndex++] = data[dataIndex++];
+        }
+        temp[tempIndex] = '\0';
+
+        // 发送测试脉冲
+        uint8_t test_type = atoi((const char *)temp);
+        send_cutter_valve_test_pulse(test_type);
+
+        // 直接返回成功响应
         isSend = 0;
         goto ok;
     }
