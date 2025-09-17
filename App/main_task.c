@@ -635,18 +635,6 @@ static void on_100ms_timer_event(void)
         accumulate_pump_off_inc();
     }
     previous_pumping = pumping;
-
-    // 打印GPIO振动开关状态、钻进状态、旋转状态、Z轴陀螺仪数据和泥浆脉冲定时器计数
-    uint8_t temp_data[200];
-    memset(temp_data, 0xFF, sizeof(temp_data));
-    int n = sprintf((char*)temp_data,"GPIO_VIB:%d DRILL:%d ROTATE:%d PUMP:%d GZ_DPS:%.2f mud_pulse_timer_counter:%d\r\n",
-                    current_vibration_status,
-                    algorithm_data.drilling,
-                    algorithm_data.rotating,
-                    pumping,
-                    sensor_data.gz_dps,
-                    mud_pulse_timer_counter);
-    LPUART2_send(temp_data, n);
 }
 
 /**
