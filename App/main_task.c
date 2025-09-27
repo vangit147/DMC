@@ -377,6 +377,12 @@ static void update_mud_pulser_state(void)
     }
 
     PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulser_curr_tx_index & 0x1);
+    uint8_t temp_data[200];
+    uint32_t timestamp = xTaskGetTickCount();
+    memset(temp_data, 0xFF, sizeof(temp_data));
+    int n = sprintf((char*)temp_data,"MUD_PULSE_PORT:%d %d\r\n",
+                    pulser_curr_tx_index & 0x1,timestamp);
+    LPUART2_send(temp_data, n);
 }
 
 /**
@@ -521,6 +527,7 @@ static void on_100ms_timer_event(void)
     // RTC相关静态变量 25/08/31 Gordon
     static uint32_t device_usage_time = 0;   // 设备运行时间计数器
     static uint32_t log_period = 0;         // 日志记录周期计数器，当其递增到algorithm_setting.log_period_time时，记录一条日志
+    static uint32_t time_count = 0;
 
     gz_avg += sensor_data.gz_dps;
     avg_count++;
@@ -636,6 +643,28 @@ static void on_100ms_timer_event(void)
         accumulate_pump_off_inc();
     }
     previous_pumping = pumping;
+    // 打印GPIO振动开关状态、钻进状态、旋转状态、振动状态、Z轴陀螺仪数据、泥浆脉冲定时器计数、静态井斜、动态井斜、实时温度、实时高边和实时电池电压
+    uint8_t temp_data[200];
+    memset(temp_data, 0xFF, sizeof(temp_data));
+    inclination_hs_t hs;
+    get_inc_hs(&hs);
+    int n = sprintf((char*)temp_data,"GPIO_VIB:%d DRILL:%d ROTATE:%d PUMP:%d GZ_DPS:%.2f mud_pulse_timer_counter:%d pump_off_inc=%f,pump_on_inc=%f,sensor_data.t_C=%f,hs.hs_lpf=%f,vSupply=%f\r\n",
+                    current_vibration_status,
+                    algorithm_data.drilling,
+                    algorithm_data.rotating,
+                    pumping,
+                    sensor_data.gz_dps,
+                    mud_pulse_timer_counter,
+                    fabs(pump_off_inc) > 8.0f ? 8.0f:pump_off_inc,
+                    fabs(inc_hs_data.good_inc) > 8.0f ? 8.0f:fabs(inc_hs_data.good_inc),
+                    sensor_data.t_C,
+                    hs.hs_lpf,
+                    vSupply);
+    time_count++;
+    if(time_count==10){
+        time_count = 0;
+        LPUART2_send(temp_data, n);
+    }
 }
 
 /**
