@@ -6,12 +6,8 @@ REM This script will be executed before Keil5 compilation
 REM Set working directory to project root
 cd /d "%~dp0"
 
-REM Get current date in YYMMDD format using wmic (works with any locale)
-for /f "tokens=2 delims==" %%a in ('wmic OS Get localdatetime /value') do set "dt=%%a"
-set "YY=%dt:~2,2%"
-set "MM=%dt:~4,2%"
-set "DD=%dt:~6,2%"
-set CURRENT_DATE=%YY%%MM%%DD%
+REM Get current date in YYMMDD format using PowerShell (compatible with modern Windows)
+for /f "delims=" %%a in ('powershell -command "Get-Date -Format 'yyMMdd'"') do set "CURRENT_DATE=%%a"
 
 REM Check if Git is available
 git --version >nul 2>&1
