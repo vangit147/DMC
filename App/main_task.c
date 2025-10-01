@@ -1084,7 +1084,7 @@ void main_task(void *p)
 
     // 初始化泥浆脉冲，执行双脉冲阶段设置传输
     pulser_tx_buffer_len = 0;
-    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1;   //LOW
+    pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 4;   //LOW
     pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1;   //HIGH
     pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 4;   //LOW
     pulser_tx_buffer[pulser_tx_buffer_len++] = MUD_PULSE_TIMER_HZ * 1;   //HIGH
