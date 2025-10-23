@@ -71,9 +71,9 @@
             <nStopU2X>0</nStopU2X>
           </BeforeCompile>
           <BeforeMake>
-            <RunUserProg1>0</RunUserProg1>
+            <RunUserProg1>1</RunUserProg1>
             <RunUserProg2>0</RunUserProg2>
-            <UserProg1Name></UserProg1Name>
+            <UserProg1Name>..\keil_prebuild.bat</UserProg1Name>
             <UserProg2Name></UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
             <UserProg2Dos16Mode>0</UserProg2Dos16Mode>
@@ -187,7 +187,6 @@
             <RvdsVP>2</RvdsVP>
             <RvdsMve>0</RvdsMve>
             <RvdsCdeCp>0</RvdsCdeCp>
-            <nBranchProt>0</nBranchProt>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>0</hadIROM2>
             <StupSel>8</StupSel>
@@ -716,16 +715,6 @@
               <FilePath>..\Drivers\IAM_20680HT.C</FilePath>
             </File>
             <File>
-              <FileName>vibration_detector.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Drivers\vibration_detector.c</FilePath>
-            </File>
-            <File>
-              <FileName>adxl357.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Drivers\adxl357.c</FilePath>
-            </File>
-            <File>
               <FileName>ads1278_imu.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Drivers\ads1278_imu.c</FilePath>
@@ -759,11 +748,6 @@
               <FileName>signal_process.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\App\signal_process.c</FilePath>
-            </File>
-            <File>
-              <FileName>mud_pulse.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\App\mud_pulse.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -831,14 +815,24 @@
           <GroupName>common</GroupName>
           <Files>
             <File>
-              <FileName>common.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\common\common.c</FilePath>
-            </File>
-            <File>
               <FileName>fir_config.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\common\fir_config.c</FilePath>
+            </File>
+            <File>
+              <FileName>iir_lowpass_filter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\iir_lowpass_filter.c</FilePath>
+            </File>
+            <File>
+              <FileName>iir_highpass_filter.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\iir_highpass_filter.c</FilePath>
+            </File>
+            <File>
+              <FileName>lib.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\common\lib.c</FilePath>
             </File>
           </Files>
         </Group>

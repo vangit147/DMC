@@ -21,7 +21,7 @@
 #include "timers.h"
 #include "main.h"
 #include "IS25LP032_flash.h"
-#include "filtering_functions.h"
+//#include "filtering_functions.h"
 
 // IAM-20680HT原始数据结构体
 typedef struct {
