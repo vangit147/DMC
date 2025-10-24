@@ -143,7 +143,7 @@ void start_and_get_adc_result(void)
 {
     uint16_t u16_ADC_raw_result;
 
-    //ADC_DRV_ConfigChan(INST_ADCONV1, 0, &adConv1_ChnConfig0); 配置ADC通道，只需执行一次
+    ADC_DRV_ConfigChan(INST_ADCONV1, 0, &adConv1_ChnConfig0); //配置ADC通道，每次检测电压时都需要执行
     ADC_DRV_WaitConvDone(INST_ADCONV1);//等待转换完成
     ADC_DRV_GetChanResult(INST_ADCONV1, 0, &u16_ADC_raw_result);//获取转换结果
 
@@ -468,9 +468,6 @@ static int32_t init_on_board_peripheral(void)
 
     ADC_DRV_ConfigConverter(INST_ADCONV1, &adConv1_ConvConfig0);    // 配置ADC转换器参数
     ADC_DRV_AutoCalibration(INST_ADCONV1);                          // 执行ADC自动校准
-
-    // 初始化ADC通道配置，用于采集电池供电电压
-    ADC_DRV_ConfigChan(INST_ADCONV1, 0, &adConv1_ChnConfig0);
 
     return 0;                                        // 返回成功状态
 }

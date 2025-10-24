@@ -973,22 +973,6 @@ void reset_interval_info(void)
     interval_info.c0_num_count = 0;
     interval_info.c1_num_count = 0;
     interval_info.c2_num_count = 0;
-
-    // 重置振动标准差统计
-    interval_info.std_v_norm_g_max = 0.0f;
-    interval_info.std_v_norm_g_min = 0.0f;
-    interval_info.std_v_norm_g_avg = 0.0f;
-
-    // 重置振动检测相关变量
-    vibration_buffer_index = 0;
-    vibration_buffer_full = false;
-    vibration_sample_count = 0;
-
-    // 重置钻进状态判断相关变量
-    drilling_history_index = 0;
-    drilling_history_full = false;
-    algorithm_data.drilling = false;
-    algorithm_data.rotating = false;
 }
 
 /**
@@ -1235,6 +1219,7 @@ static void vibration_data_collect(void)
     if (vibration_buffer_index >= VIBRATION_BUFFER_SIZE) {
         vibration_buffer_full = true;
         vibration_buffer_index = 0;  // 循环使用缓冲区
+        vibration_sample_count = 0;  // 重置振动采样计数
     }
 }
 
