@@ -24,8 +24,11 @@ void (*porta_callback1)(uint32_t);
 void (*portc_callback0)(uint32_t);
 void (*portc_callback1)(uint32_t);
 
-void (*porte_callback0)(uint32_t);
-void (*porte_callback1)(uint32_t);
+void (*porte_callback0)();
+void (*porte_callback1)();
+
+static uint32_t porte_callback0_flag;
+static uint32_t porte_callback1_flag;
 /******************************** Functions **********************************/
 /**
   *******************************************************************************
@@ -82,10 +85,10 @@ static void PORTE_IRQHandler(void)
 {
     uint32_t int_flag = PINS_DRV_GetPortIntFlag(PORTE);
     PINS_DRV_ClearPortIntFlagCmd(PORTE);
-    if(porte_callback0)
-        porte_callback0(int_flag);
-    if(porte_callback1)
-        porte_callback1(int_flag);
+    if(porte_callback0 && (porte_callback0_flag & int_flag))
+        porte_callback0();
+    if(porte_callback1 && (porte_callback1_flag & int_flag))
+        porte_callback1();
 }
 /**
   *******************************************************************************
@@ -176,12 +179,16 @@ int32_t gpio_portc_register_cb(void (*cb)(uint32_t))
   * @CreatedDate: 2024.02.20 20:55:36 Tuesday
   *******************************************************************************
   */
-int32_t gpio_porte_register_cb(void (*cb)(uint32_t))
+int32_t gpio_porte_register_cb(uint32_t flag, void (*cb)(void))
 {
-    if(porte_callback0 == 0)
+    if(porte_callback0 == 0) {
         porte_callback0 = cb;
-    else if(porte_callback1 == 0)
+        porte_callback0_flag = flag;
+		}
+    else if(porte_callback1 == 0) {
         porte_callback1 = cb;
+        porte_callback1_flag = flag;
+		}
     else
         return -1;
     return 0;

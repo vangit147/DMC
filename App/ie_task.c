@@ -30,34 +30,25 @@
 
 /* 项目头文件包含 ----------------------------------------------------------------*/
 #include "ie_task.h"
+#include "signal_process.h"
 
 /* 宏定义 ----------------------------------------------------------------*/
 /* 基础计算宏 */
 #define power2(x) ((x) * (x))             /* 求平方 */
 #define MIN(a, b) ((a) < (b) ? (a) : (b)) /* 取最小值 */
-#define _180_Div_Pi 57.295779513082320876798154814105f
+#define _180_Div_Pi 57.2957795f
 
-/* 连续计数阈值 */
-#define MAX_CONTINUOUS_BEFORE 120         /* 最大前向连续计数值 */
-#define MAX_CONTINUOUS_AFTER 30           /* 最大后向连续计数值 */
-#define MIN_CONTINUOUS_BEFORE 50          /* 最小前向连续计数阈值 */
-#define MIN_CONTINUOUS_AFTER 15           /* 最小后向连续计数阈值 */
 
 /* 虚拟半径计算相关 */
 #define CIRCLE_SIZE 30                    /* 存储用于计算虚拟半径的数组大小 */
 #define Gz_COUNT_THRESHOLD 200           /* 计算虚拟半径时，Gz的计数值阈值 */
-
-/* 权重值定义 */
-#define WEIGHT_MIN 1   /* 最小权重 */
-#define WEIGHT_LOW 8   /* 低权重 */
-#define WEIGHT_MED 24  /* 中等权重 */
-#define WEIGHT_MAX 254 /* 最大权重 */
 
 /* 时间相关定义 */
 #define TIMER_10MS 10   /* 毫秒 */
 #define TIMER_20MS 20   /* 毫秒 */
 #define TIMER_50MS 50   /* 毫秒 */
 #define TIMER_100MS 100 /* 毫秒 */
+#define DELTA_TIME 0.05f /* 时间间隔  20Hz采样率*/
 
 /* 事件定义 */
 #define EVENT_TIMER_10MS (0X1)
@@ -65,27 +56,41 @@
 #define EVENT_TIMER_50MS (0X1 << 2)
 #define EVENT_TIMER_100MS (0X1 << 3)
 
-/* 算法参数配置 */
-#define HISTORY_MAX_LEN 15      /* 二级矩阵的每级长度 */
-#define SNAPSHOT_HISTORY_LEN 20 /* 供丢弃的回溯数据的长度 */
-#define BEST_RECORD_LEN 51      /* 最佳记录长度 */
-#define HIGH_WEIGHT_INC_LEN 180 /* 高权重倾角环形队列长度 */
-
 /* EKF参数定义 */
 #define EKF_DT 0.05f        /* EKF采样周期，与TIMER_50MS对应 */
 #define EKF_Q_ANGLE 0.0002f /* 过程噪声 */
 #define EKF_Q_GYRO 0.001f   /* 陀螺仪过程噪声 */
 #define EKF_R_ANGLE 0.08f   /* 测量噪声 */
-#define MAX_R_MULTIPLIER 10000.0f /* 最大R_ANGLE倍数 */
+#define MAX_R_MULTIPLIER 20000.0f /* 最大R_ANGLE倍数 */
 #define MAX_Q_MULTIPLIER 2.0f     /* 最大Q倍数 */
 #define GZ_STD_THRESHOLD_EKF 3.0f /* 用于EKF的Gz标准差阈值 */
 
 /* 可调配参数 */
-#define VARIANCE_SAMPLE_LEN 20         /* 计算标准差的样本长度 */
-#define VARIANCE_THRESHOLD_Gz_C2 20.0f /* 标准差阈值 */
-#define VARIANCE_THRESHOLD_Ax_y 0.2f   /* ax与ay的标准差阈值之和 */
-#define VARIANCE_THRESHOLD_Gz_C1 10.0f /* 入选C1-leavel的转速标准差阈值 */
+#define VARIANCE_THRESHOLD_Gz_C2 10.0f /* 标准差阈值 */
+#define VARIANCE_THRESHOLD_Gz_C1 5.0f /* 入选C1-leavel的转速标准差阈值 */
 #define RATATION_THRESHOLD_Gz_C0 36.0f /* 旋转阈值 */
+
+/* 简化权重计算参数 */
+#define HARSH_THRESHOLD 150    /* 标准差阈值 >150 */
+#define MILD_THRESHOLD 100     /* 标准差阈值 >100 */
+#define LESS_THRESHOLD 10      /* 标准差阈值 >10 */
+#define NO_THRESHOLD 10        /* 标准差阈值 <10 */
+
+/* 距离阈值定义 */
+#define HARSH_DISTANCE 180     /* HARSH阈值对应的距离150 ，此数值修改时需小于GZ_STD_SNAPSHOT_LEN*/
+#define MILD_DISTANCE 120      /* MILD阈值对应的距离 100*/
+#define LESS_DISTANCE 60      /* LESS阈值对应的距离 50*/
+#define NO_DISTANCE 40         /* NO阈值对应的距离20 */
+
+/* 权重值定义 */
+#define STD_DEV_PROPAGATION_FACTOR 0.005f /* 标准差传播因子 ，在线计算标准差时用于传播*/
+#define HARSH_WEIGHT_NEAR 0.00000001f  /* HARSH阈值近距离权重 */
+#define HARSH_WEIGHT_FAR 0.0001f        /* HARSH阈值远距离权重 */
+#define MILD_WEIGHT_NEAR 0.0000001f    /* MILD阈值近距离权重 */
+#define MILD_WEIGHT_FAR 0.0001f         /* MILD阈值远距离权重 */
+#define LESS_WEIGHT_NEAR 0.000001f     /* LESS阈值近距离权重 */
+#define LESS_WEIGHT_FAR 0.001f         /* LESS阈值远距离权重 */
+#define NO_WEIGHT 0.01f           /* NO阈值远距离权重 */
 
 /* 类型定义 ----------------------------------------------------------------*/
 /* EKF状态结构体 */
@@ -115,6 +120,20 @@ inclination_hs_t inc_hs_data;
 
 /* 算法信息结构体 */
 algorithm_info_t algorithm_data;
+
+/* 振动检测相关变量 */
+#define VIBRATION_BUFFER_SIZE 20  // 20个元素，对应1秒钟的数据（20Hz）
+static float vibration_buffer[VIBRATION_BUFFER_SIZE];  // 振动数据缓冲区
+static uint8_t vibration_buffer_index = 0;             // 缓冲区索引
+static bool vibration_buffer_full = false;             // 缓冲区是否已满
+static uint32_t vibration_sample_count = 0;            // 振动采样计数
+
+/* 钻进状态判断相关变量 */
+#define DRILLING_HISTORY_SIZE 10  // 10秒历史记录
+static float gz_avg_history[DRILLING_HISTORY_SIZE];    // z轴陀螺仪均值历史记录
+static float std_v_norm_g_history[DRILLING_HISTORY_SIZE]; // 振动标准差历史记录
+static uint8_t drilling_history_index = 0;             // 历史记录索引
+static bool drilling_history_full = false;              // 历史记录是否已满
 
 /* EKF状态结构体 */
 static EKF_State ekf_state;
@@ -146,17 +165,23 @@ algorithm_setting_t algorithm_setting = {
 
 /* 函数声明 ----------------------------------------------------------------*/
 /* 私有函数声明 */
-static int16_t calculate_std_dev_welford(int16_t m, uint16_t n);
-static void calculate_weight(void);
+static float calculate_std_dev_welford(int16_t sample_count, uint16_t latest_index);
 static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out);
 static void calculate_rotation_radius(float ax, float ay, float gz_dps, float gz_rad);
 static void qualify_by_variance(void);
 static void calibrate(void);
 static void ie_task_timer_50ms_cb(TimerHandle_t xTimer);
 
+/* 振动检测相关函数声明 */
+static void vibration_data_collect(void);
+static float calculate_vibration_std_dev(void);
+
+/* 钻进状态判断相关函数声明 */
+static void update_drilling_status(void);
+
 /* 公共函数声明 */
 void getRadiusOffset(float *ry, float *offsetX, float *offsetY, float *rx, float *yrLimit, float *xrLimit);
-void compute_ie();
+void compute_ie(void);
 void interval_info_deal(bool period_end);
 int32_t get_inc_hs(inclination_hs_t* inc_hs);
 void get_interval_info(interval_info_t* info);
@@ -223,11 +248,11 @@ float fround(float x, int n)
 
 /**
   *******************************************************************************
- * @Description: 根据加速度计和陀螺仪数据的方差计算数据质量等级
+ * @Description: 根据加速度计和陀螺仪数据的方差计算数据质量等级并确认权重
  * @Parameters : 无
  * @RetValue   : 无
- * @Note       : 通过分析加速度计和陀螺仪数据的方差来判断设备运动状态
- *               将数据质量分为C0(静止)、C1(匀速)、C2(变速)三个等级
+ * @Note       : 通过分析陀螺仪数据的方差来判断设备运动状态和手续数据的可靠性，并确认权重
+ *               此方法要点在于
   * @CreatedBy  : Gordon
  * @CreatedDate: 2024.02.26 12:19:26 Monday
   *******************************************************************************
@@ -242,170 +267,153 @@ static void qualify_by_variance(void)
     time_slot = (xTaskGetTickCount() - last_timestick) / 1000.0f;
     last_timestick = xTaskGetTickCount();
 
-    // 将当前数据存入环形数组
-    int current_pos = algorithm_data.tail;
-    algorithm_data.b_record[0][current_pos] = sensor_data.ax_cf_g;
-    algorithm_data.b_record[1][current_pos] = sensor_data.ay_cf_g;
-    algorithm_data.b_record[2][current_pos] = sensor_data.az_cf_g;
-    algorithm_data.b_record[3][current_pos] = sensor_data.gz_dps;
+    // 将当前数据存入环形数组,sample_num和gz_std_dev_num用于判断是否需要重置
+    int current_gz_sample_pos = algorithm_data.gz_dps_tail;
+    int current_gz_std_dev_pos = algorithm_data.gz_std_dev_tail;
 
-    // 计算标准差并存储 - 使用Welford算法
-    int16_t target_pos = calculate_std_dev_welford(VARIANCE_SAMPLE_LEN, SNAPSHOT_HISTORY_LEN);
+    algorithm_data.gz_dps_sample_num++;
+    algorithm_data.gz_std_dev_num++;
 
-    // 验证target_pos的有效性
-    if (target_pos < 0 || target_pos >= BEST_RECORD_LEN)
+    if(algorithm_data.gz_dps_sample_num > SAMPLE_LEN)
     {
-        // 如果返回的位置无效，使用当前位置
-        target_pos = current_pos;
+        algorithm_data.gz_dps_sample_num = SAMPLE_LEN;
+    }
+    if(algorithm_data.gz_std_dev_num > GZ_STD_SNAPSHOT_LEN)
+    {
+        algorithm_data.gz_std_dev_num = GZ_STD_SNAPSHOT_LEN;
     }
 
-    // 获取标准差值
-    float std_dev_ax_ay = algorithm_data.b_record_stdv[0][target_pos];
-    float std_dev_gz = algorithm_data.b_record_stdv[1][target_pos];
-		
-    algorithm_data.gz_dps_sdv = std_dev_gz;
-    algorithm_data.std_dev_ax_ay = std_dev_ax_ay;
+    // 1. 存储转速用于样本计算（总共SAMPLE_LEN个样本）
+    algorithm_data.gz_dps_sample[current_gz_sample_pos] = sensor_data.gz_dps;
 
-    // 计算grade
-    int current_grade;
-    float abs_gz = fabs(sensor_data.gz_dps);
+    // 2. 计算转速标准差（总共GZ_STD_SNAPSHOT_LEN个样本）用于计算权重
+    algorithm_data.gz_dps_sdv = calculate_std_dev_welford(SAMPLE_LEN, current_gz_sample_pos);
+    algorithm_data.gz_std_dev_sample[current_gz_std_dev_pos] = algorithm_data.gz_dps_sdv;
 
-    // 根据标准差和旋转阈值判断数据质量等级
-    if (std_dev_gz <= VARIANCE_THRESHOLD_Gz_C1 &&
-        std_dev_ax_ay <= VARIANCE_THRESHOLD_Ax_y &&
-        abs_gz <= RATATION_THRESHOLD_Gz_C0)
+
+    // 3. 根据简化规则计算最新数据的权重
+    float weight = 0.0f;
+    float min_influence = 1.0f; // 初始化为最大值，用于寻找最小影响度
+
+    // 以最新数据为起点，遍历历史数据gz-std计算影响度，选择最小影响度作为权重
+    // 注意gz-std是基于历史数据向前推的，而且大小可以和sample_len不同
+    for (int i = 0; i < algorithm_data.gz_std_dev_num && i < GZ_STD_SNAPSHOT_LEN; i++)
     {
-        current_grade = 0; // C0级：静止状态
-    }
-    else if (std_dev_gz <= VARIANCE_THRESHOLD_Gz_C1 &&
-             std_dev_ax_ay <= VARIANCE_THRESHOLD_Ax_y)
-    {
-        current_grade = 1; // C1级：匀速状态
-    }
-    else if (std_dev_gz <= VARIANCE_THRESHOLD_Gz_C2)
-    {
-        current_grade = 2; // C2级：准匀速状态
-    }
-    else
-    {
-        current_grade = -1; // 无效数据
+        int data_pos = (algorithm_data.gz_std_dev_head + i) % GZ_STD_SNAPSHOT_LEN;
+        float influence = 0.0f;
+
+        // 获取该位置的标准差
+        float std_dev = algorithm_data.gz_std_dev_sample[data_pos];
+
+        // 计算距离（相对于最新数据tail的位置）
+        // 最新数据在tail，距离tail最近的是(tail-1)，head是最远的
+        int distance_from_tail;
+        if (data_pos == algorithm_data.gz_std_dev_tail)
+        {
+            distance_from_tail = 0; // 当前位置就是最新数据
+        }
+        else
+        {
+            // 计算从data_pos到tail的距离
+            if (data_pos <= algorithm_data.gz_std_dev_tail)
+            {
+                distance_from_tail = algorithm_data.gz_std_dev_tail - data_pos;
+            }
+            else
+            {
+                // 处理环形队列的边界情况
+                distance_from_tail = GZ_STD_SNAPSHOT_LEN - data_pos + algorithm_data.gz_std_dev_tail;
+            }
+        }
+
+        // 根据标准差阈值和距离计算影响度
+        if (std_dev > HARSH_THRESHOLD)
+        {
+            // HARSH_THRESHOLD >150: 距离HARSH_DISTANCE以内影响度HARSH_WEIGHT_NEAR，距离以上影响度HARSH_WEIGHT_FAR
+            if (distance_from_tail <= HARSH_DISTANCE)
+            {
+                influence = HARSH_WEIGHT_NEAR;
+            }
+            else
+            {
+                influence = HARSH_WEIGHT_FAR;
+            }
+        }
+        else if (std_dev > MILD_THRESHOLD)
+        {
+            // MILD_THRESHOLD >100: 距离MILD_DISTANCE以内影响度MILD_WEIGHT_NEAR，距离以上影响度MILD_WEIGHT_FAR
+            if (distance_from_tail <= MILD_DISTANCE)
+            {
+                influence = MILD_WEIGHT_NEAR;
+            }
+            else
+            {
+                influence = MILD_WEIGHT_FAR;
+            }
+        }
+        else if (std_dev > LESS_THRESHOLD)
+        {
+            // LESS_THRESHOLD >10: 距离LESS_DISTANCE以内影响度LESS_WEIGHT_NEAR，距离以上影响度LESS_WEIGHT_FAR
+            if (distance_from_tail <= LESS_DISTANCE)
+            {
+                influence = LESS_WEIGHT_NEAR;
+            }
+            else
+            {
+                influence = LESS_WEIGHT_FAR;
+            }
+        }
+        else
+        {
+               influence = NO_WEIGHT;
+
+        }
+
+        // 寻找最小影响度
+        if (influence < min_influence)
+        {
+            min_influence = influence;
+        }
     }
 
-    if(!(current_grade==0))//peace_time重开,reset
+    // 将最小影响度作为最新数据的权重
+    weight = min_influence;
+
+    // 存储最新数据的权重
+    algorithm_data.current_weight = weight;
+
+
+    // 简化peace_time处理逻辑，基于标准差判断
+    if (algorithm_data.gz_dps_sdv > VARIANCE_THRESHOLD_Gz_C1)
     {
+        // 标准差较大，重置peace_time
         algorithm_data.peace_time_break = true;
         algorithm_data.peace_time = 0;
-        algorithm_data.peacetime_threshod_write_done=false;
+        algorithm_data.peacetime_threshod_write_done = false;
     }
     else
     {
+        // 标准差较小，继续累积peace_time
         algorithm_data.peace_time_break = false;
         algorithm_data.peace_time += time_slot;
     }
 
-    // 存储grade
-    algorithm_data.b_record_grade[target_pos] = current_grade;
-    algorithm_data.current_signal_level = current_grade;
-
-    // 更新环形队列状态
-    if (algorithm_data.record_num <= BEST_RECORD_LEN)
+    // 更新snapshot的指针
+    // 增加两个数组中head的更新处理
+    if(algorithm_data.gz_dps_sample_num >= SAMPLE_LEN)
     {
-        // 队列未满，增加计数
-        algorithm_data.record_num++;
-        algorithm_data.tail = (algorithm_data.tail + 1) % BEST_RECORD_LEN;
+        algorithm_data.gz_dps_head = (algorithm_data.gz_dps_head + 1) % SAMPLE_LEN;
     }
-    else
+    if(algorithm_data.gz_std_dev_num >= GZ_STD_SNAPSHOT_LEN)
     {
-        // 队列已满，先处理head位置的数据
-        int removed_idx = algorithm_data.head;
-        int removed_grade = (int)algorithm_data.b_record_grade[removed_idx];
-
-        // 处理被移除的数据
-        if (removed_grade == 0 || removed_grade == 1)
-        {
-            // 处理高权重数据
-            int pre_pos;
-            if (algorithm_data.high_weight_incs_head == -1)
-            {
-                // 空队列初始化
-                algorithm_data.high_weight_incs_head = 0;
-                algorithm_data.high_weight_incs_tail = 0;
-                pre_pos = -1;
-            }
-            else
-            {
-                // 计算前一个位置
-                pre_pos = (algorithm_data.high_weight_incs_tail - 1 + HIGH_WEIGHT_INC_LEN) % HIGH_WEIGHT_INC_LEN;
-
-                // 检查队列是否已满
-                int next_tail = (algorithm_data.high_weight_incs_tail + 1) % HIGH_WEIGHT_INC_LEN;
-                if (next_tail == algorithm_data.high_weight_incs_head)
-                {
-                    // 队列已满，移动head
-                    algorithm_data.high_weight_incs_head =
-                        (algorithm_data.high_weight_incs_head + 1) % HIGH_WEIGHT_INC_LEN;
-                }
-            }
-
-            // 存储数据到high_weight_incs
-            algorithm_data.high_weight_incs_data[algorithm_data.high_weight_incs_tail] =
-                fabs(atan2(sqrt(power2(sensor_data.ax_cf_g) + power2(sensor_data.ay_cf_g)), sensor_data.az_cf_g) * 180 / PI);
-
-            // 计算加速度误差（使用当前加速度与标准重力加速度的差值）
-            float acc_error = sqrtf(power2(algorithm_data.b_record[0][target_pos]) +
-                                          power2(algorithm_data.b_record[1][target_pos]) +
-                                          power2(algorithm_data.b_record[2][target_pos]));
-
-            // 直接使用acc_error，不再存储到数组中
-            algorithm_data.high_weight_incs_grade[algorithm_data.high_weight_incs_tail] = removed_grade;
-
-            // 处理连续性信息
-            if (pre_pos == -1 ||
-                algorithm_data.high_weight_incs_grade[pre_pos] != removed_grade)
-            {
-                // 新的连续数据块
-                algorithm_data.high_weight_incs_info[0][algorithm_data.high_weight_incs_tail] = 1;
-                algorithm_data.high_weight_incs_info[1][algorithm_data.high_weight_incs_tail] = 1;
-
-                if (pre_pos != -1)
-                {
-                    // 标记前一个数据块结束
-                    algorithm_data.high_weight_incs_info[0][pre_pos] =
-                        -abs(algorithm_data.high_weight_incs_info[0][pre_pos]);
-                }
-            }
-            else
-            {
-                // 继续现有数据块
-                algorithm_data.high_weight_incs_info[0][algorithm_data.high_weight_incs_tail] =
-                    MIN(algorithm_data.high_weight_incs_info[0][pre_pos] + 1, MAX_CONTINUOUS_BEFORE);
-
-                // 更新前面数据的backward_count
-                int curr_pos = pre_pos;
-                int count = 1;
-                while (curr_pos != algorithm_data.high_weight_incs_head &&
-                       algorithm_data.high_weight_incs_grade[curr_pos] == removed_grade &&
-                       algorithm_data.high_weight_incs_info[0][curr_pos] > 0)
-                {
-                    algorithm_data.high_weight_incs_info[1][curr_pos] = MIN(count + 1, MAX_CONTINUOUS_AFTER);
-                    curr_pos = (curr_pos - 1 + HIGH_WEIGHT_INC_LEN) % HIGH_WEIGHT_INC_LEN;
-                    count++;
-                }
-                algorithm_data.high_weight_incs_info[1][algorithm_data.high_weight_incs_tail] = 1;
-            }
-
-            // 计算权重
-            calculate_weight();
-
-            // 移动tail指针
-            algorithm_data.high_weight_incs_tail =
-                (algorithm_data.high_weight_incs_tail + 1) % HIGH_WEIGHT_INC_LEN;
-        }
-
-        // 更新b_record的指针
-        algorithm_data.head = (algorithm_data.head + 1) % BEST_RECORD_LEN;
-        algorithm_data.tail = (algorithm_data.tail + 1) % BEST_RECORD_LEN;
+        algorithm_data.gz_std_dev_head = (algorithm_data.gz_std_dev_head + 1) % GZ_STD_SNAPSHOT_LEN;
     }
+
+
+    algorithm_data.gz_dps_tail = (algorithm_data.gz_dps_tail + 1) % SAMPLE_LEN;
+    algorithm_data.gz_std_dev_tail = (algorithm_data.gz_std_dev_tail + 1) % GZ_STD_SNAPSHOT_LEN;
+
+
 }
 
 /**
@@ -447,32 +455,48 @@ void compute_ie()
     calculate_rotation_radius(sensor_data.ax_g, sensor_data.ay_g, sensor_data.gz_dps, sensor_data.gz_rad);
 
     float inc;
-    float ax_g_square = sensor_data.ax_g * sensor_data.ax_g;
-    float ay_g_square = sensor_data.ay_g * sensor_data.ay_g;
+    float local_hs;
+    float inc_lpf_roll;
+    float inc_lpf_pitch;
+    float ax_lpf_g_square = sensor_data.ax_lpf_g * sensor_data.ax_lpf_g;
+    float ay_lpf_g_square = sensor_data.ay_lpf_g * sensor_data.ay_lpf_g;
     float az_g_square = sensor_data.az_g * sensor_data.az_g;
     
-    // 计算inc1- 加速度计实时井斜
-    inc = atan2(sqrt(ax_g_square + ay_g_square), sensor_data.az_g) * _180_Div_Pi;
+
+    //1.计算井斜
+    // 1.1 inc1:采用完全低通滤波井斜
+
+    // 计算inc_lpf和inc_hpf 完全采用低通滤波，不考虑离心力影响
+    inc = atan2(sqrt(ax_lpf_g_square + ay_lpf_g_square), sensor_data.az_g) * _180_Div_Pi;
     inc = inc < 0 ? -inc : inc;
-    inc_hs_data.inc1_prefilter = inc;
-		algorithm_data.inc1=inc;
-    
-    // 计算roll和pitch角度
-    // Roll (绕X轴旋转) - 使用原始加速度值
-    inc1_roll = atan2(sensor_data.ay_g, 
-                      sqrt(ax_g_square + 
+		algorithm_data.inc_lpf=inc;
+    inc_hs_data.inc1 = algorithm_data.inc_lpf;
+
+    // 计算roll和pitch角度,NED坐标系，绕东轴旋转为pitch，绕北轴旋转为roll
+    inc_lpf_pitch = atan2(sensor_data.ay_lpf_g,
+                      sqrt(ax_lpf_g_square +
                            az_g_square)) * _180_Div_Pi;
     
-    // Pitch (绕Y轴旋转) - 使用原始加速度值
-    inc1_pitch = atan2(-sensor_data.ax_g,
-                       sqrt(ay_g_square + 
-                            az_g_square)) * _180_Div_Pi;
+    inc_lpf_roll = atan2(-sensor_data.ax_lpf_g,
+                       sensor_data.ay_lpf_g) * _180_Div_Pi;
     
     // 更新到inc_hs_data中
-    inc_hs_data.inc1_roll = inc1_roll;
-    inc_hs_data.inc1_pitch = inc1_pitch;
+    inc_hs_data.inc1_roll = inc_lpf_roll;
+    inc_hs_data.inc1_pitch = inc_lpf_pitch;
 
-    // 计算Inc2- 加速度经过陀螺仪的数据离心力补偿后的实时井斜
+    local_hs = atan2(sensor_data.ax_lpf_g,sensor_data.ay_lpf_g)*_180_Div_Pi;
+
+    // 转换为[0, 360)范围
+    if (local_hs < 0)
+    {
+        local_hs += 360.0f;
+    }
+
+    algorithm_data.hs_lpf = local_hs;
+    inc_hs_data.hs_lpf = local_hs;
+
+
+    // 1.2计算Inc2- 原inc2，根据转速以低通+带通滤波动态过滤xy轴加速度，考虑陀螺仪的数据离心力补偿后，并采用EKF卡尔曼平滑的实时井斜
     float acc_meas[3] = {sensor_data.ax_cf_g, sensor_data.ay_cf_g, sensor_data.az_cf_g};
     float gyro_meas[3] = {sensor_data.gx_rad, sensor_data.gy_rad, sensor_data.gz_rad};
     float angle_out;
@@ -480,156 +504,30 @@ void compute_ie()
     ekf_filter(acc_meas, gyro_meas, &angle_out);
     inc = fabsf(angle_out); // 取绝对值
     algorithm_data.inc2 = inc;
-	inc_hs_data.inc2_prefilter = inc;
+	inc_hs_data.inc2 = inc;
 
-    // 计算inc3 -- 使用权重计算最优倾角
-    if (algorithm_data.high_weight_incs_head != -1)
-    {
-        // 计算high_weight_incs中的有效数据数量
-        int16_t valid_count = (algorithm_data.high_weight_incs_tail - algorithm_data.high_weight_incs_head + HIGH_WEIGHT_INC_LEN) % HIGH_WEIGHT_INC_LEN;
+    // 1.3使用权重计算方式更新inc3：inc3 = (1-a)*inc3 + a*当前inc
+    // 获取当前inc的权重（从snapshot中获取最新的权重）
 
-        if (valid_count > 0)
-        {
-            // 计算加权平均倾角
-            float total_weight = 0.0f;
-            float weighted_sum = 0.0f;
-
-            // 遍历整个high_weight_incs数组计算加权和
-            int16_t curr_pos = algorithm_data.high_weight_incs_head;
-            do
-            {
-                uint8_t weight = algorithm_data.high_weight[curr_pos];
-                float inc = algorithm_data.high_weight_incs_data[curr_pos];
-
-                weighted_sum += weight * inc;
-                total_weight += weight;
-
-                curr_pos = (curr_pos + 1) % HIGH_WEIGHT_INC_LEN;
-
-            } while (curr_pos != algorithm_data.high_weight_incs_tail);
-
-            // 计算加权平均值
-            if (total_weight > 0.0f)
-            {
-                algorithm_data.inc3 = weighted_sum / total_weight;
-                algorithm_data.good_inc = algorithm_data.inc3;
-                inc_hs_data.inc3_prefilter = algorithm_data.inc3;
-                
-                // 计算 inc3 的 roll 和 pitch 角度
-                // 使用与 inc1 相同的计算方法，但使用补偿后的加速度值
-                inc_hs_data.inc3_roll = atan2(sensor_data.ay_cf_g, 
-                                             sqrt(sensor_data.ax_cf_g * sensor_data.ax_cf_g + 
-                                                  sensor_data.az_cf_g * sensor_data.az_cf_g)) * 180.0f / PI;
-                
-                inc_hs_data.inc3_pitch = atan2(-sensor_data.ax_cf_g,
-                                              sqrt(sensor_data.ay_cf_g * sensor_data.ay_cf_g + 
-                                                   sensor_data.az_cf_g * sensor_data.az_cf_g)) * 180.0f / PI;
-    }
-    else
-    {
-                algorithm_data.good_inc = algorithm_data.inc2; // 如果没有有效权重，使用inc2作用good_inc
-                // 当没有有效权重时，inc3_roll 和 inc3_pitch 保持原值
-            }
-        }
-    }
-    else
-    {
-        // 当high_weight_incs为空时，使用当前传感器数据
-        algorithm_data.good_inc = algorithm_data.inc2; // 使用EKF计算的倾角
-
-			//inc_hs_data.inc3 此时不再更新
-    }
+    float inc_bpf =
+    atan2(sqrt(power2(sensor_data.ax_cf_g) + power2(sensor_data.ay_cf_g)), sensor_data.az_cf_g) * _180_Div_Pi;
+    inc_bpf = inc_bpf < 0 ? -inc_bpf : inc_bpf;
     
-    
-    inc_hs_data.good_inc_prefilter = algorithm_data.good_inc;
 
-    // 计算高边
-    double local_hs;
-    float x = -sensor_data.ax_g;
-    float y = sensor_data.ay_g;
-
-    // 使用atan2直接计算角度，返回值范围(-π, π]
-    local_hs = atan2(y, x);
-
-    // 转换为角度
-    local_hs *= 180.0f / PI;
-
-    // 转换为[0, 360)范围
-    if (local_hs < 0)
-    {
-        local_hs += 360.0;
+    local_hs = atan2(sensor_data.ax_cf_g, sensor_data.ay_cf_g) * _180_Div_Pi;
+    if (local_hs < 0) {
+        local_hs += 360.0f;
     }
-
-    inc_hs_data.hs = local_hs;
 //    excel中计算高边的公式：
 //    =IF(ATAN2(-X轴数据,Y轴数据)*180/PI()<0,360+ATAN2(-X轴数据,Y轴数据)*180/PI(),ATAN2(-X轴数据,Y轴数据)*180/PI())
-    
-    // 中位数滤波处理
-    // 将当前值存入缓冲区
-    inc_hs_data.inc1_buffer[inc_hs_data.buffer_index] = inc_hs_data.inc1_prefilter;
-    inc_hs_data.inc2_buffer[inc_hs_data.buffer_index] = inc_hs_data.inc2_prefilter;
-    inc_hs_data.inc3_buffer[inc_hs_data.buffer_index] = inc_hs_data.inc3_prefilter;
-    inc_hs_data.good_inc_buffer[inc_hs_data.buffer_index] = inc_hs_data.good_inc_prefilter;
-    
-    // 更新缓冲区索引
-    inc_hs_data.buffer_index = (inc_hs_data.buffer_index + 1) % 10;
-    
-    // 如果缓冲区已填满，进行中位数滤波
-    if (inc_hs_data.buffer_index == 0)
-    {
-        // 创建临时数组用于排序
-        float temp_inc1[10], temp_inc2[10], temp_inc3[10], temp_good_inc[10];
-        
-        // 复制数据到临时数组
-        for (int i = 0; i < 10; i++)
-        {
-            temp_inc1[i] = inc_hs_data.inc1_buffer[i];
-            temp_inc2[i] = inc_hs_data.inc2_buffer[i];
-            temp_inc3[i] = inc_hs_data.inc3_buffer[i];
-            temp_good_inc[i] = inc_hs_data.good_inc_buffer[i];
-        }
-        
-        // 对临时数组进行排序
-        for (int i = 0; i < 9; i++)
-        {
-            for (int j = 0; j < 9 - i; j++)
-            {
-                if (temp_inc1[j] > temp_inc1[j + 1])
-                {
-                    float temp = temp_inc1[j];
-                    temp_inc1[j] = temp_inc1[j + 1];
-                    temp_inc1[j + 1] = temp;
-                }
-                
-                if (temp_inc2[j] > temp_inc2[j + 1])
-                {
-                    float temp = temp_inc2[j];
-                    temp_inc2[j] = temp_inc2[j + 1];
-                    temp_inc2[j + 1] = temp;
-                }
-                
-                if (temp_inc3[j] > temp_inc3[j + 1])
-                {
-                    float temp = temp_inc3[j];
-                    temp_inc3[j] = temp_inc3[j + 1];
-                    temp_inc3[j + 1] = temp;
-                }
-                
-                if (temp_good_inc[j] > temp_good_inc[j + 1])
-                {
-                    float temp = temp_good_inc[j];
-                    temp_good_inc[j] = temp_good_inc[j + 1];
-                    temp_good_inc[j + 1] = temp;
-                }
-            }
-        }
-        
-        // 取中位数（第5个元素，索引为4）
-        inc_hs_data.inc1 = (temp_inc1[2]+temp_inc1[3]+temp_inc1[4])/3.0f;
-        inc_hs_data.inc2 = (temp_inc2[2]+temp_inc2[3]+temp_inc2[4])/3.0f;
-        inc_hs_data.inc3 = (temp_inc3[2]+temp_inc3[3]+temp_inc3[4])/3.0f;
-        inc_hs_data.good_inc = (temp_good_inc[2]+temp_good_inc[3]+temp_good_inc[4])/3.0f;
-    }
+    algorithm_data.inc3 = (1.0f - algorithm_data.current_weight) * algorithm_data.inc3 + algorithm_data.current_weight * inc;
+    algorithm_data.hs_bpf = (1.0f - algorithm_data.current_weight) *algorithm_data.hs_bpf + algorithm_data.current_weight*local_hs;
+     algorithm_data.good_inc = algorithm_data.inc3;
+
+    inc_hs_data.inc3 = algorithm_data.inc3;
+    inc_hs_data.hs_bpf = algorithm_data.hs_bpf;
+	inc_hs_data.good_inc=algorithm_data.good_inc;
+    inc_hs_data.hs=inc_hs_data.hs_lpf;
 }
 
 
@@ -665,8 +563,6 @@ void interval_info_deal(bool period_end)
         interval_info.radius_y_min = algorithm_data.ry;
 
     // 更新标准差的最大值
-    if (algorithm_data.std_dev_ax_ay > interval_info.std_dev_ax_ay_max)
-        interval_info.std_dev_ax_ay_max = algorithm_data.std_dev_ax_ay;
 
     if (algorithm_data.gz_dps_sdv > interval_info.sdv_gyro_z_max)
         interval_info.sdv_gyro_z_max = algorithm_data.gz_dps_sdv;
@@ -718,13 +614,42 @@ void interval_info_deal(bool period_end)
         interval_info.gyro_z_dps_min = sensor_data.gz_dps;
     interval_info.gyro_z_dps_avg = (interval_info.gyro_z_dps_avg * interval_info.acc_count + sensor_data.gz_dps) / (interval_info.acc_count + 1);
 
-    // 更新数据质量等级统计
-    if (algorithm_data.current_signal_level == 0 && interval_info.c0_num_count < UINT16_MAX)
+    // 更新数据质量统计（基于标准差）
+    if (algorithm_data.gz_dps_sdv <= VARIANCE_THRESHOLD_Gz_C1 && interval_info.c0_num_count < UINT16_MAX)
         interval_info.c0_num_count++;
-    else if (algorithm_data.current_signal_level == 1 && interval_info.c1_num_count < UINT16_MAX)
+    else if (algorithm_data.gz_dps_sdv <= VARIANCE_THRESHOLD_Gz_C2 && interval_info.c1_num_count < UINT16_MAX)
         interval_info.c1_num_count++;
-    else if (algorithm_data.current_signal_level == 2 && interval_info.c2_num_count < UINT16_MAX)
+    else if (interval_info.c2_num_count < UINT16_MAX)
         interval_info.c2_num_count++;
+
+    // 更新振动标准差统计（每秒计算一次）
+    static uint32_t vibration_std_calc_count = 0;
+    vibration_std_calc_count++;
+
+    // 每20次（1秒）计算一次振动标准差
+    if (vibration_std_calc_count >= 20) {
+        float current_std = calculate_vibration_std_dev();
+
+        if (current_std > 0.0f) {  // 只有当缓冲区满时才更新统计
+            // 更新最大值
+            if (current_std > interval_info.std_v_norm_g_max)
+                interval_info.std_v_norm_g_max = current_std;
+
+            // 更新最小值（注意初始值的处理）
+            if (interval_info.std_v_norm_g_min == 0.0f || current_std < interval_info.std_v_norm_g_min)
+                interval_info.std_v_norm_g_min = current_std;
+
+            // 更新平均值
+            static uint32_t vibration_std_sample_count = 0;
+            vibration_std_sample_count++;
+            interval_info.std_v_norm_g_avg = (interval_info.std_v_norm_g_avg * (vibration_std_sample_count - 1) + current_std) / vibration_std_sample_count;
+        }
+
+        vibration_std_calc_count = 0;  // 重置计数器
+
+        // 更新钻进状态判断（每秒调用一次）
+        update_drilling_status();
+    }
 
     // 增加计数，并防止溢出
     if (interval_info.acc_count < UINT32_MAX) {
@@ -732,148 +657,93 @@ void interval_info_deal(bool period_end)
     }
 }
 
+
 /**
  * @brief  使用Welford在线算法计算环形数组中指定位置前后数据的标准差
- * @param  m   - 需要计算的前m个数据
- * @param  n    - 需要计算的后n个数据
- * @return int16_t    - 返回target_pos
+ * @param  sample_count   - 需要计算的样本数量
+ * @param  latest_index   - 环形数组中的最新数据位置索引
+ * @return float          - 返回计算好的标准差
  * @note   使用Welford在线算法，只需一次遍历即可同时计算均值和方差，提高计算效率
  */
-static int16_t calculate_std_dev_welford(int16_t m, uint16_t n)
+static float calculate_std_dev_welford(int16_t sample_count, uint16_t latest_index)
 {
-    float mean_ax = 0.0f, mean_ay = 0.0f, mean_gz = 0.0f;
-    float M2_ax = 0.0f, M2_ay = 0.0f, M2_gz = 0.0f;
-    int16_t tail = algorithm_data.tail;
-    uint16_t total_samples = m + n;
-    int16_t target_pos = 0;
+    float mean_gz = 0.0f;
+    float M2_gz = 0.0f;
 
-    if (algorithm_data.record_num <= 1)
+    // 检查参数有效性
+    if (sample_count <= 0 || latest_index >= SAMPLE_LEN)
     {
-        algorithm_data.b_record_stdv[0][tail] = 0;
-        algorithm_data.b_record_stdv[1][tail] = 0;
-        return tail;
+        // 如果参数无效，返回0
+        return 0.0f;
     }
 
-    // 确保采样数量不超过数组长度
-    if (total_samples > algorithm_data.record_num)
+    // 确保采样数量不超过可用数据量
+    uint16_t available_samples = algorithm_data.gz_dps_sample_num;
+    if (sample_count > available_samples)
     {
-        total_samples = algorithm_data.record_num;
-        target_pos = tail;
-    }
-    else
-    {
-        target_pos = (tail - n + BEST_RECORD_LEN) % BEST_RECORD_LEN;
+        sample_count = available_samples;
     }
 
-    uint32_t start_idx = (tail - total_samples + BEST_RECORD_LEN) % BEST_RECORD_LEN;
+    // 如果数据不足，返回0
+    if (sample_count <= 1)
+    {
+        return 0.0f;
+    }
+
+    // 从最新位置开始，回溯环形数组计算标准差
+    uint32_t start_idx = (latest_index - sample_count + 1 + SAMPLE_LEN) % SAMPLE_LEN;
 
     // 使用Welford在线算法，单次遍历计算均值和方差
-    for (uint32_t i = 0; i < total_samples; i++)
+    for (uint32_t i = 0; i < sample_count; i++)
     {
-        uint32_t idx = (start_idx + i) % BEST_RECORD_LEN;
-        float x_ax = algorithm_data.b_record[0][idx];
-        float x_ay = algorithm_data.b_record[1][idx];
-        float x_gz = algorithm_data.b_record[3][idx];
+        uint32_t idx = (start_idx + i) % SAMPLE_LEN;
         
-        // 更新均值
-        float delta_ax = x_ax - mean_ax;
-        float delta_ay = x_ay - mean_ay;
+        // 从b_record[3]中获取gz数据
+        float x_gz = algorithm_data.gz_dps_sample[idx];
+        
+        // Welford算法：计算增量均值
         float delta_gz = x_gz - mean_gz;
-        
-        mean_ax += delta_ax / (i + 1);
-        mean_ay += delta_ay / (i + 1);
         mean_gz += delta_gz / (i + 1);
         
-        // 更新方差
-        M2_ax += delta_ax * (x_ax - mean_ax);
-        M2_ay += delta_ay * (x_ay - mean_ay);
+        // Welford算法：累积方差
         M2_gz += delta_gz * (x_gz - mean_gz);
     }
-    
-    // 计算最终方差
-    float variance_ax = M2_ax / (total_samples - 1);
-    float variance_ay = M2_ay / (total_samples - 1);
-    float variance_gz = M2_gz / (total_samples - 1);
-    
+
+    // 计算最终方差（使用n-1作为分母，这是样本方差的无偏估计）
+    float variance_gz = M2_gz / (sample_count - 1);
+
     // 计算标准差
-    float std_dev_ax_ay = sqrtf(variance_ax + variance_ay);
     float std_dev_gz = sqrtf(variance_gz);
 
-    // 存储标准差结果
-    algorithm_data.b_record_stdv[0][target_pos] = std_dev_ax_ay;
-    algorithm_data.b_record_stdv[1][target_pos] = std_dev_gz;
-
-    return target_pos;
-}
-
-/**
- * @brief  计算数据权重并写入到指定位置
- * @return None
- */
-static void calculate_weight(void)
-{
-    // 检查数组是否为空或无效
-    if (algorithm_data.high_weight_incs_head < 0 ||
-        algorithm_data.high_weight_incs_tail < 0 ||
-        algorithm_data.high_weight_incs_head >= HIGH_WEIGHT_INC_LEN ||
-        algorithm_data.high_weight_incs_tail >= HIGH_WEIGHT_INC_LEN ||
-        algorithm_data.high_weight_incs_head == algorithm_data.high_weight_incs_tail)
+    // 时间加权标准差计算：由于gz_std_dev的波动性，需要进行时间加权平滑处理
+    // 用于避免ax/ay的长效波动对inc3计算的影响
+    if (algorithm_data.gz_dps_sdv > std_dev_gz)
     {
-        return;
+        std_dev_gz = STD_DEV_PROPAGATION_FACTOR * std_dev_gz + (1.0f - STD_DEV_PROPAGATION_FACTOR) * algorithm_data.gz_dps_sdv;
     }
 
-    uint8_t weight = 0;
-    int curr_pos = algorithm_data.high_weight_incs_head;
-
-    do
-    {
-        if (curr_pos < 0 || curr_pos >= HIGH_WEIGHT_INC_LEN)
-        {
-            break;
-        }
-
-        // 获取forward和backward计数
-        int forward_count = abs(algorithm_data.high_weight_incs_info[0][curr_pos]);
-        int backward_count = algorithm_data.high_weight_incs_info[1][curr_pos];
-
-        // 检查计数值的有效性
-        if (forward_count < 0 || backward_count < 0)
-        {
-            weight = 0;
-        }
-        else
-        {
-            // 根据前向和后向计数分别判断权重
-            if (forward_count >= MAX_CONTINUOUS_BEFORE &&
-                backward_count >= MAX_CONTINUOUS_AFTER)
-            {
-                // 前后向都达到最大连续计数要求
-                weight = WEIGHT_MAX;
-            }
-            else if ((forward_count >= MAX_CONTINUOUS_BEFORE &&
-                      backward_count >= MIN_CONTINUOUS_AFTER) ||
-                     (forward_count >= MIN_CONTINUOUS_BEFORE &&
-                      backward_count >= MAX_CONTINUOUS_AFTER))
-            {
-                // 一个方向达到最大连续计数，另一个方向达到最小连续计数
-                weight = WEIGHT_MED;
-            }
-            else if (forward_count >= MIN_CONTINUOUS_BEFORE &&
-                     backward_count >= MIN_CONTINUOUS_AFTER)
-            {
-                // 两个方向都达到最小连续计数
-                weight = WEIGHT_LOW;
-            }
-            else
-            {
-                weight = WEIGHT_MIN;
-            }
-        }
-
-        algorithm_data.high_weight[curr_pos] = weight;
-        curr_pos = (curr_pos + 1) % HIGH_WEIGHT_INC_LEN;
-    } while (curr_pos != algorithm_data.high_weight_incs_tail);
+    // 仅返回计算好的标准差，不进行数据插入
+    return std_dev_gz;
 }
+
+
+
+/**
+ * @brief  初始化EKF状态
+ * @return None
+ */
+void ekf_init(void) {
+    // 初始化状态
+    ekf_state.angle = 0.0f;        // 假设初始倾角为0°
+    ekf_state.bias = 0.0f;         // 假设初始偏差为0°/s
+
+    // 初始化协方差矩阵
+    ekf_state.P[0][0] = 1.0f;     // 角度初始不确定性：1°
+    ekf_state.P[0][1] = 0.0f;     // 初始无相关性
+    ekf_state.P[1][0] = 0.0f;     // 初始无相关性
+    ekf_state.P[1][1] = 0.1f;     // 偏差初始不确定性：0.1°/s
+}
+
 
 /**
  * @brief  扩展卡尔曼滤波器实现
@@ -882,13 +752,18 @@ static void calculate_weight(void)
  * @param  angle_out - 输出角度指针
  * @return None
  * @note   使用EKF融合加速度计和陀螺仪数据计算倾角，并增加中位数均值滤波
+*  转动时ax，ay的重力分量信号会随着转动形成一个与转动频率同频的正弦波信号，
+*  最影响ay，ax的是gz的变化，如果gz变化小，ax没有角加速度，ay的离心力也可以被带通滤波清除掉，
+*  问题是gz的不均匀性，一会儿大，一会儿小，也就是gz_std_dev数据太大，这个就会影响到加速度计，
+*  在ekf卡尔曼滤波中如何就现有的代码，尽量少改动的前提下，针对gz_std_dev(转速变化的标准差）来进行建模平滑
+*  1. 首先，需要对gz_std_dev进行平滑处理，以减少其对加速度计的影响。
+*  2. 其次，需要对gz_std_dev进行建模，以预测其对加速度计的影响。
+
  */
 static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out)
 {
     // 获取当前Gz的标准差
     float gz_std_dev = algorithm_data.gz_dps_sdv;
-    
-    // 设置阈值和调整系数
 
     // 计算调整系数
     float r_multiplier = 1.0f;
@@ -912,7 +787,7 @@ static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out)
     
     // 1. 从加速度计数据计算倾角
     float acc_angle = atan2f(sqrtf(acc_meas[0] * acc_meas[0] + acc_meas[1] * acc_meas[1]), acc_meas[2]);
-    acc_angle = acc_angle * 180.0f / PI; // 转换为角度
+    acc_angle = acc_angle * _180_Div_Pi; // 转换为角度
 
     // 2. 预测步骤
     // 2.1 状态预测
@@ -921,19 +796,19 @@ static void ekf_filter(float *acc_meas, float *gyro_meas, float *angle_out)
     float bias_pred = ekf_state.bias; // 假设偏差保持不变
 
     // 2.2 误差协方差预测
-    float F[2][2] = {{1.0f, -EKF_DT}, {0.0f, 1.0f}};           // 状态转移矩阵
-    float Q[2][2] = {{dynamic_Q_ANGLE, 0.0f}, {0.0f, dynamic_Q_GYRO}}; // 使用动态调整的过程噪声协方差
+//    float F[2][2] = {{1.0f, -EKF_DT}, {0.0f, 1.0f}};           // 状态转移矩阵
+//    float Q[2][2] = {{dynamic_Q_ANGLE, 0.0f}, {0.0f, dynamic_Q_GYRO}}; // 使用动态调整的过程噪声协方差
 
     // P = F*P*F' + Q
     float P_temp[2][2];
     P_temp[0][0] = ekf_state.P[0][0] + (-EKF_DT * ekf_state.P[1][0]) + dynamic_Q_ANGLE;
     P_temp[0][1] = ekf_state.P[0][1] + (-EKF_DT * ekf_state.P[1][1]);
-    P_temp[1][0] = ekf_state.P[1][0] + (-EKF_DT * ekf_state.P[1][0]);
+    P_temp[1][0] = ekf_state.P[1][0] + (-EKF_DT * ekf_state.P[0][0]);
     P_temp[1][1] = ekf_state.P[1][1] + dynamic_Q_GYRO;
 
     // 3. 更新步骤
     // 3.1 计算卡尔曼增益
-    float H[2] = {1.0f, 0.0f};            // 观测矩阵
+//    float H[2] = {1.0f, 0.0f};            // 观测矩阵
     float S = P_temp[0][0] + dynamic_R_ANGLE; // 使用动态调整的测量噪声协方差
     float K[2];                           // 卡尔曼增益
     K[0] = P_temp[0][0] / S;
@@ -970,10 +845,13 @@ int32_t get_inc_hs(inclination_hs_t* inc_hs)
         return -1;
 
     // 复制inc_hs_data中的所有数据到inc_hs
+    inc_hs->good_inc_prefilter = inc_hs_data.good_inc_prefilter;
     inc_hs->inc1 = inc_hs_data.inc1;
     inc_hs->inc2 = inc_hs_data.inc2;
     inc_hs->inc3 = inc_hs_data.inc3;
     inc_hs->hs = inc_hs_data.hs;
+    inc_hs->hs_lpf = inc_hs_data.hs_lpf;
+    inc_hs->hs_bpf = inc_hs_data.hs_bpf;
     inc_hs->inc1_roll = inc_hs_data.inc1_roll;
     inc_hs->inc1_pitch = inc_hs_data.inc1_pitch;
     inc_hs->inc3_roll = inc_hs_data.inc3_roll;
@@ -1023,8 +901,6 @@ void get_interval_info(interval_info_t* info)
     info->radius_y_max = interval_info.radius_y_max;
     info->radius_y_min = interval_info.radius_y_min;
     
-    // 加速度标准差统计
-    info->std_dev_ax_ay_max = interval_info.std_dev_ax_ay_max;
     
     // 陀螺仪标准差统计
     info->sdv_gyro_z_max = interval_info.sdv_gyro_z_max;
@@ -1038,6 +914,11 @@ void get_interval_info(interval_info_t* info)
     info->c0_num_count = interval_info.c0_num_count;
     info->c1_num_count = interval_info.c1_num_count;
     info->c2_num_count = interval_info.c2_num_count;
+
+    // 振动标准差统计
+    info->std_v_norm_g_max = interval_info.std_v_norm_g_max;
+    info->std_v_norm_g_min = interval_info.std_v_norm_g_min;
+    info->std_v_norm_g_avg = interval_info.std_v_norm_g_avg;
 }
 
 /**
@@ -1078,7 +959,6 @@ void reset_interval_info(void)
     interval_info.radius_y_min = 999;
 
     // 重置标准差数据
-    interval_info.std_dev_ax_ay_max = 0;
     interval_info.sdv_gyro_z_max = 0;
     interval_info.sdv_gyro_z_min = 999;
 
@@ -1093,6 +973,22 @@ void reset_interval_info(void)
     interval_info.c0_num_count = 0;
     interval_info.c1_num_count = 0;
     interval_info.c2_num_count = 0;
+
+    // 重置振动标准差统计
+    interval_info.std_v_norm_g_max = 0.0f;
+    interval_info.std_v_norm_g_min = 0.0f;
+    interval_info.std_v_norm_g_avg = 0.0f;
+
+    // 重置振动检测相关变量
+    vibration_buffer_index = 0;
+    vibration_buffer_full = false;
+    vibration_sample_count = 0;
+
+    // 重置钻进状态判断相关变量
+    drilling_history_index = 0;
+    drilling_history_full = false;
+    algorithm_data.drilling = false;
+    algorithm_data.rotating = false;
 }
 
 /**
@@ -1165,7 +1061,7 @@ void calculate_rotation_radius(float ax, float ay, float gz_dps, float gz_rad)
     
     // 判断是否达到最大计数次数:50ms定时器运行的话，需要小于等于200次;判断是否转完一圈（通过gz的累加值判断）
 		// 当定时器按照50ms时，需要0.05f，当采样频率变化时，需要相应调整 2025-05-23
-    if (algorithm_data.gz_count >= Gz_COUNT_THRESHOLD && fabs(algorithm_data.gz_dps_sum_in_circle)*0.05f < 360.0f)
+    if (algorithm_data.gz_count >= Gz_COUNT_THRESHOLD && fabs(algorithm_data.gz_dps_sum_in_circle)*DELTA_TIME < 360.0f)
     {
         // 如果总里程未达到360度，重置所有累加变量
         algorithm_data.ax_sum_in_circle = 0.0f;
@@ -1272,16 +1168,21 @@ void calculate_rotation_radius(float ax, float ay, float gz_dps, float gz_rad)
 
 void ie_task(void *p)
 {
-    algorithm_data.head = 0;                   // 初始化环形队列头指针
-    algorithm_data.tail = 0;                   // 初始化环形队列尾指针
-    algorithm_data.high_weight_incs_head = -1; // 初始化高权重倾角环形队列头指针
-    algorithm_data.high_weight_incs_tail = -1; // 初始化高权重倾角环形队列尾指针
-    inc_hs_data.buffer_index = 0;              // 初始化缓冲区索引
+    algorithm_data.gz_dps_head = 0;                   // 初始化gz-dps样本数组头指针
+    algorithm_data.gz_dps_tail = 0;                   // 初始化gz-dps样本数组尾指针
+    algorithm_data.gz_std_dev_head = 0;                     // 初始化gz-std样本数组头指针
+    algorithm_data.gz_std_dev_tail = 0;                     // 初始化gz-std样本数组尾指针
+    algorithm_data.gz_dps_sample_num = 0;                          // 初始化gz-dps样本数量
+    algorithm_data.gz_std_dev_num = 0;                  // 初始化gz-std样本数量
+
+
 
     reset_interval_info();
+	        ekf_init();
 
 //    xTaskCreate(virtual_radius_task, "virtual_radius_task", 512, NULL, TASK_PRIORITY_VIRTUAL_RADIUS, &virtual_radius_task_handle);
-
+    // 延迟启动定时器，确保ie_task_handle已经被设置
+    vTaskDelay(pdMS_TO_TICKS(100));
     xTimerStart(xTimerCreate("ie_task_timer_50", TIMER_50MS, 1, 0, ie_task_timer_50ms_cb), 1000);
 
     for (;;)
@@ -1289,6 +1190,7 @@ void ie_task(void *p)
         uint32_t notify;
 
         xTaskNotifyWait(0x0, 0xffffffff, &notify, portMAX_DELAY);
+
 
         if (notify & EVENT_TIMER_50MS)
         {
@@ -1298,6 +1200,10 @@ void ie_task(void *p)
             calibrate();
             qualify_by_variance();
             compute_ie();
+
+            // 振动数据收集（每50ms收集一次，相当于20Hz）
+            vibration_data_collect();
+
             interval_info_deal(false);
 
              // 计算执行时间（微秒）
@@ -1311,4 +1217,148 @@ void ie_task(void *p)
     }
 }
 //START_TASK(ie_task, "ie_task", 640, NULL, TASK_PRIORITY_IE, &ie_task_handle);
+
+/**
+ * @brief 振动数据收集函数
+ * @note 每50ms调用一次，收集v_norm_g数据到缓冲区
+ */
+static void vibration_data_collect(void)
+{
+    // 将最新的v_norm_g数据放入缓冲区
+    vibration_buffer[vibration_buffer_index] = sensor_data.v_norm_g;
+
+    // 更新缓冲区索引
+    vibration_buffer_index++;
+    vibration_sample_count++;
+
+    // 检查缓冲区是否已满
+    if (vibration_buffer_index >= VIBRATION_BUFFER_SIZE) {
+        vibration_buffer_full = true;
+        vibration_buffer_index = 0;  // 循环使用缓冲区
+    }
+}
+
+/**
+ * @brief 计算振动标准差
+ * @return 标准差值，如果缓冲区未满则返回0
+ */
+static float calculate_vibration_std_dev(void)
+{
+    if (!vibration_buffer_full && vibration_sample_count < VIBRATION_BUFFER_SIZE) {
+        return 0.0f;  // 缓冲区未满，返回0
+    }
+
+    // 计算均值
+    float sum = 0.0f;
+    int count = vibration_buffer_full ? VIBRATION_BUFFER_SIZE : vibration_sample_count;
+
+    for (int i = 0; i < count; i++) {
+        sum += vibration_buffer[i];
+    }
+    float mean = sum / count;
+
+    // 计算方差
+    float variance_sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        float diff = vibration_buffer[i] - mean;
+        variance_sum += diff * diff;
+    }
+    float variance = variance_sum / count;
+
+    // 返回标准差
+    return sqrt(variance);
+}
+
+/**
+ * @brief 更新钻进状态判断
+ * @note 每1秒调用一次，判断是否在钻进状态
+ *       滞后机制：进入条件宽松，退出条件严格
+ *       进入：连续10秒中8秒满足条件 OR 连续10秒旋转
+ *       退出：连续10秒中所有10秒都不满足条件 AND 连续10秒不旋转
+ */
+static void update_drilling_status(void)
+{
+    // 计算当前秒的z轴陀螺仪均值（使用已有的gz_dps_avg）
+    float current_gz_avg = sensor_data.gz_dps;
+    float current_std_v_norm_g = 0.0f;
+
+    // 获取当前秒的振动标准差（如果缓冲区满的话）
+    if (vibration_buffer_full) {
+        current_std_v_norm_g = calculate_vibration_std_dev();
+    }
+
+    // 更新历史记录
+    gz_avg_history[drilling_history_index] = current_gz_avg;
+    std_v_norm_g_history[drilling_history_index] = current_std_v_norm_g;
+
+    // 更新索引
+    drilling_history_index++;
+    if (drilling_history_index >= DRILLING_HISTORY_SIZE) {
+        drilling_history_full = true;
+        drilling_history_index = 0;  // 循环使用
+    }
+
+    // 只有历史记录满了才开始判断
+    if (!drilling_history_full) {
+        algorithm_data.drilling = false;  // 历史记录未满，设为静态
+        return;
+    }
+
+    // 判断旋转条件：所有10秒的z轴陀螺仪均值都大于10dps(0.17rad/s)(0.6rpm)
+    bool is_rotating = true;
+    bool is_not_rotating = true;
+    for (int i = 0; i < DRILLING_HISTORY_SIZE; i++) {
+        if (gz_avg_history[i] <= 10.0f) {
+            is_rotating = false;
+        }
+        if (gz_avg_history[i] > 10.0f) {
+            is_not_rotating = false;
+        }
+    }
+
+    // 判断振动条件：10秒中有8秒的振动标准差大于0.1
+    int vibration_count = 0;
+    int no_vibration_count = 0;
+    for (int i = 0; i < DRILLING_HISTORY_SIZE; i++) {
+        if (std_v_norm_g_history[i] > 0.1f) {
+            vibration_count++;
+        }
+        if (std_v_norm_g_history[i] <= 0.1f) {
+            no_vibration_count++;
+        }
+    }
+    bool is_vibrating = (vibration_count >= 8);
+    bool is_not_vibrating = (no_vibration_count >= 10);  // 所有10秒都不振动
+
+    // 更新旋转状态（直接保存，供其他任务调用）
+    algorithm_data.rotating = is_rotating;
+
+    // ==================== 钻进状态判断逻辑 ====================
+    // 基于滞后机制：进入宽松，退出严格，避免频繁切换
+    //
+    // 状态转换表：
+    // 当前状态 | 旋转 | 振动 | 不旋转 | 不振动 | 结果
+    // 不在钻进 | ✓ | ✗ | ✗ | ✗ | 进入钻进（旋转满足）
+    // 不在钻进 | ✗ | ✓ | ✗ | ✗ | 进入钻进（振动满足）
+    // 不在钻进 | ✗ | ✗ | ✓ | ✓ | 保持静态
+    // 在钻进   | ✓ | ✗ | ✗ | ✗ | 保持钻进（旋转持续）
+    // 在钻进   | ✗ | ✓ | ✗ | ✗ | 保持钻进（振动持续）
+    // 在钻进   | ✗ | ✗ | ✓ | ✗ | 保持钻进（振动仍存在）
+    // 在钻进   | ✗ | ✗ | ✗ | ✓ | 保持钻进（旋转仍存在）
+    // 在钻进   | ✗ | ✗ | ✓ | ✓ | 退出钻进（两个条件都满足）
+    // =========================================================
+
+    static bool was_drilling = false;  // 记录上一秒的钻进状态
+
+    if (!was_drilling) {
+        // 进入条件（宽松）：旋转 OR 振动，只要有一个满足就进入
+        algorithm_data.drilling = (is_rotating || is_vibrating);
+    } else {
+        // 退出条件（严格）：必须连续10秒不旋转 AND 连续10秒不振动
+        algorithm_data.drilling = !(is_not_rotating && is_not_vibrating);
+    }
+
+    // 更新状态记录
+    was_drilling = algorithm_data.drilling;
+}
 #endif /* IE_TASK_C */
