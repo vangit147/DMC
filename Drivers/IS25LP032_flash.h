@@ -22,60 +22,77 @@ extern "C"
 #include "main.h"
 #include "cpu.h"
 
-#define LOG_FLAG_VIBRATING 0X1              // 震动标志
-#define LOG_FLAG_VIBRATING_FOR_ADXL357 0X10 // ADXL357震动标志
+/* 振动标志位定义 */
+#define VIBRATION_FLAG_DRILLING_MASK    0x01    // 钻进状态位掩码
+#define VIBRATION_FLAG_ROTATING_MASK    0x02    // 旋转状态位掩码
+#define VIBRATION_FLAG_GPIO_MASK        0x04    // GPIO振动检测位掩码
 
+/* 振动标志位操作宏 */
+#define SET_DRILLING_FLAG(flag)         ((flag) |= VIBRATION_FLAG_DRILLING_MASK)
+#define SET_ROTATING_FLAG(flag)         ((flag) |= VIBRATION_FLAG_ROTATING_MASK)
+#define SET_GPIO_VIBRATION_FLAG(flag)   ((flag) |= VIBRATION_FLAG_GPIO_MASK)
+
+    /**
+     * @brief 日志数据结构体 (总大小: 136字节)
+     * @note 使用__packed属性确保结构体紧凑排列，无填充字节
+     * @details 包含传感器数据、倾角信息、虚拟半径、系统状态、振动检测等完整信息
+     */
     typedef __packed struct _log_
     {
-        uint32_t timestamp;         // 时间戳
-        uint32_t reserved0;         // 保留字段0
-        float ax;                   // X轴加速度
-        float ay;                   // Y轴加速度
-        float az;                   // Z轴加速度
-        float gx;                   // X轴角速度
-        float gy;                   // Y轴角速度
-        float gz;                   // Z轴角速度
-        float inc1_max;             // 倾角1最大值
-        float inc1_min;             // 倾角1最小值
-        float inc1_avg;             // 倾角1平均值
-        float inc2_max;             // 倾角2最大值
-        float inc2_min;             // 倾角2最小值
-        float inc2_avg;             // 倾角2平均值
-        float virtual_x_radius_min; // 虚拟X半径最小值
-        float virtual_x_radius_max; // 虚拟X半径最大值
-        float virtual_y_radius_min; // 虚拟Y半径最小值
-        float virtual_y_radius_max; // 虚拟Y半径最大值
-        float inc6_min;             // 倾角6最小值
-        float inc6_max;             // 倾角6最大值
-        float inc6_avg;             // 倾角6平均值
-        float hs;                   // 高边
-        float gz_max;               // Z轴角速度最大值
-        float gz_min;               // Z轴角速度最小值
-        float gz_avg;               // Z轴角速度平均值
-        float temp;                 // 温度
-        float roll;                 // 日志间隔内转速（没有使用）
-        uint32_t diff_t;            // 时间差
-        float virtual_x_radius_avg; // 虚拟X半径平均值（没有使用）
-        float virtual_y_radius_avg; // 虚拟Y半径平均值（没有使用）
-        float gz_dps_sdv_max;       // Z轴角速度标准差最大值
-        float gz_dps_sdv_min;       // Z轴角速度标准差最小值
-        float std_dev_ax_ay_max;    // XY轴加速度标准差之和的最大值
-        float vibration_data_min;
-        float vibration_data_max;
-        float vibration_data_avg;
-        uint32_t flag;             // 振动标志
-        int c0_num_max;            // 计数器0最大值
-        int c0_num_min;            // 计数器0最小值
-        int c1_num_max;            // 计数器1最大值
-        int c1_num_min;            // 计数器1最小值
-        int c2_num_max;            // 计数器2最大值
-        int c2_num_min;            // 计数器2最小值
-        float max_peace_time_max;  // 最大平静时间最大值
-        float max_peace_time_min;  // 最大平静时间最小值
-        uint16_t peace_time_count; // 满足条件的次数
-        float s_f32_36V;           // 电池电压值
-        int16_t reserved1[1];      // 保留字段1
-        uint16_t crc16;            // CRC16校验值
+        /* 基础信息 (8字节) */
+        uint32_t timestamp;         // 4字节 - 时间戳
+        uint32_t reserved0;         // 4字节 - 保留字段0
+
+        /* 传感器数据 (24字节) */
+        float ax;                   // 4字节 - X轴加速度
+        float ay;                   // 4字节 - Y轴加速度
+        float az;                   // 4字节 - Z轴加速度
+        float gx;                   // 4字节 - X轴角速度
+        float gy;                   // 4字节 - Y轴角速度
+        float gz;                   // 4字节 - Z轴角速度
+
+        /* 倾角数据 (36字节) */
+        float inc1_max;             // 4字节 - 倾角1最大值
+        float inc1_min;             // 4字节 - 倾角1最小值
+        float inc1_avg;             // 4字节 - 倾角1平均值
+        float inc2_max;             // 4字节 - 倾角2最大值
+        float inc2_min;             // 4字节 - 倾角2最小值
+        float inc2_avg;             // 4字节 - 倾角2平均值
+        float inc6_min;             // 4字节 - 倾角6最小值
+        float inc6_max;             // 4字节 - 倾角6最大值
+        float inc6_avg;             // 4字节 - 倾角6平均值
+
+        /* 虚拟半径数据 (16字节) */
+        float virtual_x_radius_min; // 4字节 - 虚拟X半径最小值
+        float virtual_x_radius_max; // 4字节 - 虚拟X半径最大值
+        float virtual_y_radius_min; // 4字节 - 虚拟Y半径最小值
+        float virtual_y_radius_max; // 4字节 - 虚拟Y半径最大值
+
+        /* 系统状态数据 (20字节) */
+        float hs;                   // 4字节 - 高边
+        float gz_max;               // 4字节 - Z轴角速度最大值
+        float gz_min;               // 4字节 - Z轴角速度最小值
+        float gz_avg;               // 4字节 - Z轴角速度平均值
+        float temp;                 // 4字节 - 温度
+
+        /* 统计计算电源数据 (8字节) */
+        float gz_dps_sdv_max;       // 4字节 - Z轴角速度标准差最大值
+        float gz_dps_sdv_min;       // 4字节 - Z轴角速度标准差最小值
+
+        /* 电源数据 (4字节) */
+        float s_f32_36V;            // 4字节 - 电池电压值
+
+        /* 振动检测标准差统计 (12字节) */
+        float std_v_norm_g_max;     // 4字节 - 振动标准差最大值
+        float std_v_norm_g_min;     // 4字节 - 振动标准差最小值
+        float std_v_norm_g_avg;     // 4字节 - 振动标准差平均值
+
+        /* 振动标志位 (4字节) */
+        uint32_t flag;              // 4字节 - 振动检测标志位
+
+        /* 保留字段 (2字节) */
+        int16_t reserved1[1];       // 2字节 - 保留字段1
+        uint16_t crc16;             // 2字节 - CRC16校验值
     } log_t;
 
     /******************************** Functions **********************************/
@@ -265,7 +282,7 @@ extern "C"
      * @Note       : 设置设备的基本参数
      *******************************************************************************
      */
-    void is25pl032_flash_set_param(uint8_t accfir, uint8_t gyrofir, double xr_limit, double yr_limit, double gain);
+    void is25pl032_flash_set_param(double xr_limit, double yr_limit);
 
     /**
      *******************************************************************************
@@ -277,7 +294,7 @@ extern "C"
      * @Note       : 获取设备的基本参数
      *******************************************************************************
      */
-    void is25pl032_flash_get_param(uint8_t *accfir, uint8_t *gyrofir, double *xr_limit, double *yr_limit, double *gain);
+    void is25pl032_flash_get_param(double *xr_limit, double *yr_limit);
 
     /**
      *******************************************************************************
@@ -462,157 +479,111 @@ extern "C"
      *******************************************************************************
      */
     int32_t set_temp_comp_upper_limit(float limit);
+
     /**
      *******************************************************************************
-     * @Description: 设置泥浆脉冲数据重传次数
+     * @Description: 设置静态脉冲数据重传次数
      * @Parameters : count - 重传次数
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置泥浆脉冲数据有效范围的重传次数
+     * @Note       : 设置静态脉冲数据有效范围的重传次数
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_retry_count(uint32_t count);
+    uint32_t is25pl032_flash_set_pulse_retry_for_pump_off_data(uint32_t count);
 
     /**
      *******************************************************************************
-     * @Description: 获取泥浆脉冲数据重传次数
+     * @Description: 获取静态脉冲数据重传次数
      * @Parameters : 无
-     * @RetValue   : 泥浆脉冲数据重传次数
-     * @Note       : 获取泥浆脉冲数据有效范围的重传次数
+     * @RetValue   : 静态脉冲数据重传次数
+     * @Note       : 获取静态脉冲数据有效范围的重传次数
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_retry_count(void);
+    uint32_t is25pl032_flash_get_pulse_retry_for_pump_off_data(void);
 
     /**
      *******************************************************************************
-     * @Description: 设置每组泥浆脉冲数据的间隔
-     * @Parameters : Pulse_group_interval - 时间间隔
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置每组泥浆脉冲数据的有效间隔
+     * @Description: 获取静态脉冲数据重传时间间隔
+     * @Parameters : 无
+     * @RetValue   : 静态脉冲数据重传时间间隔（秒）
+     * @Note       : 获取静态脉冲数据重传时间间隔
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_Pulse_group_interval(uint32_t Pulse_group_interval);
+    uint32_t is25pl032_flash_get_pulse_interval_for_pump_off_data(void);
 
     /**
      *******************************************************************************
-     * @Description: 获取每组泥浆脉冲数据的间隔
-     * @Parameters : 无
-     * @RetValue   : 每组泥浆脉冲数据的间隔
-     * @Note       : 获取每组泥浆脉冲数据的间隔
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_Pulse_group_interval(void);
-    /**
-     *******************************************************************************
-     * @Description: 设置泥浆脉冲数据发送延时时间
-     * @Parameters : Pulse_send_delay - 延时时间
+     * @Description: 设置静态脉冲数据重传时间间隔
+     * @Parameters : retry_interval - 静态脉冲数据重传时间间隔（秒）
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置泥浆脉冲数据发送延时时间
+     * @Note       : 设置静态脉冲数据重传时间间隔
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_Pulse_send_delay(uint32_t Pulse_send_delay);
-    /**
-     *******************************************************************************
-     * @Description: 获取泥浆脉冲数据发送延时时间
-     * @Parameters : 无
-     * @RetValue   : 泥浆脉冲数据发送延时时间
-     * @Note       : 获取泥浆脉冲数据发送延时时间
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_Pulse_send_delay(void);
-    /**
-     *******************************************************************************
-     * @Description: 设置泥浆脉冲数据定时发送时间
-     * @Parameters : Pulse_auto_send - 定时发送时间
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置泥浆脉冲数据定时发送时间
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_Pulse_auto_send(uint32_t Pulse_auto_send);
-    /**
-     *******************************************************************************
-     * @Description: 获取泥浆脉冲数据定时发送时间
-     * @Parameters : 无
-     * @RetValue   : 泥浆脉冲数据定时发送时间
-     * @Note       : 获取泥浆脉冲数据定时发送时间
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_Pulse_auto_send(void);
-    /**
-     *******************************************************************************
-     * @Description: 设置静态数据收集的时间
-     * @Parameters : Static_data_collection - 静态数据收集的时间
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置静态数据收集的时间
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_Static_data_collection(uint32_t Static_data_collection);
-    /**
-     *******************************************************************************
-     * @Description: 获取静态数据收集的时间
-     * @Parameters : 无
-     * @RetValue   : 静态数据收集的时间
-     * @Note       : 获取静态数据收集的时间
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_Static_data_collection(void);
-    /**
-     *******************************************************************************
-     * @Description: 设置泥浆脉冲发送的组数
-     * @Parameters : Number_of_pluse_group - 泥浆脉冲发送的组数
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置泥浆脉冲发送的组数
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_set_Number_of_pluse_group(uint32_t Number_of_pluse_group);
-    /**
-     *******************************************************************************
-     * @Description: 获取泥浆脉冲发送的组数
-     * @Parameters : 无
-     * @RetValue   : 泥浆脉冲发送的组数
-     * @Note       : 获取泥浆脉冲发送的组数
-     *******************************************************************************
-     */
-    uint32_t is25pl032_flash_get_Number_of_pluse_group(void);
-    /**
-     *******************************************************************************
-     * @Description: 设置ADXL357振动阈值数据
-     * @Parameters : vibration_threshold - ADXL357振动阈值
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置ADXL357振动阈值数据
-     *******************************************************************************
-     */
-
-    uint32_t is25pl032_flash_set_vibration_threshold(float vibration_threshold);
+    uint32_t is25pl032_flash_set_pulse_interval_for_pump_off_data(uint32_t retry_interval);
 
     /**
      *******************************************************************************
-     * @Description: 获取ADXL357振动阈值数据
+     * @Description: 获取动态脉冲数据周期性上传时间
      * @Parameters : 无
-     * @RetValue   : ADXL357振动阈值数据
-     * @Note       : 获取ADXL357振动阈值数据
+     * @RetValue   : 动态脉冲数据周期性上传时间（秒）
+     * @Note       : 获取动态脉冲数据周期性上传时间
      *******************************************************************************
      */
-    float is25pl032_flash_get_vibration_threshold(void);
+    uint32_t is25pl032_flash_get_pulse_interval(void);
 
     /**
      *******************************************************************************
-     * @Description: 设置ADXL357振动灵敏度
-     * @Parameters : vibration_sensitivity - 灵敏值
+     * @Description: 设置动态脉冲数据周期性上传时间
+     * @Parameters : pulse_interval - 动态脉冲数据周期性上传时间（秒）
      * @RetValue   : 0-成功，-1-失败
-     * @Note       : 设置ADXL357振动灵敏度
+     * @Note       : 设置动态脉冲数据周期性上传时间
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_set_vibration_sensitivity(uint32_t vibration_sensitivity);
+    uint32_t is25pl032_flash_set_pulse_interval(uint32_t pulse_interval);
 
     /**
      *******************************************************************************
-     * @Description: 获取ADXL357振动灵敏度
+     * @Description: 获取停泵状态下的静态井斜前置延迟时间1
      * @Parameters : 无
-     * @RetValue   : 0-成功，-1-失败
-     * @Note       : 获取ADXL357振动灵敏度
+     * @RetValue   : 延迟时间（秒）
+     * @Note       : 获取停泵状态下静态井斜前置延迟时间1的配置值
+     *               默认为8秒，用于控制停泵后多久开始记录静态井斜数据
      *******************************************************************************
      */
-    uint32_t is25pl032_flash_get_vibration_sensitivity(void);
+    uint16_t is25pl032_flash_get_pump_delay1(void);
+
+    /**
+     *******************************************************************************
+     * @Description: 设置停泵状态下的静态井斜前置延迟时间1
+     * @Parameters : delay - 延迟时间（秒）
+     * @RetValue   : 0-成功
+     * @Note       : 设置停泵状态下静态井斜前置延迟时间1
+     *               默认为8秒，用于控制停泵后多久开始记录静态井斜数据
+     *******************************************************************************
+     */
+    uint16_t is25pl032_flash_set_pump_delay1(uint16_t delay);
+
+    /**
+     *******************************************************************************
+     * @Description: 获取停泵状态下的静态井斜前置延迟时间2
+     * @Parameters : 无
+     * @RetValue   : 延迟时间（秒）
+     * @Note       : 获取停泵状态下静态井斜前置延迟时间2的配置值
+     *               默认为12秒，用于控制停泵后多久开始记录静态井斜数据
+     *               与pump_delay1配合使用，提供更灵活的延迟控制
+     *******************************************************************************
+     */
+    uint16_t is25pl032_flash_get_pump_delay2(void);
+
+    /**
+     *******************************************************************************
+     * @Description: 设置停泵状态下的静态井斜前置延迟时间2
+     * @Parameters : delay - 延迟时间（秒）
+     * @RetValue   : 0-成功
+     * @Note       : 设置停泵状态下静态井斜前置延迟时间2
+     *               默认为12秒，与pump_delay1配合使用，提供更灵活的延迟控制
+     *******************************************************************************
+     */
+    uint16_t is25pl032_flash_set_pump_delay2(uint16_t delay);
 
     /**
      *******************************************************************************
@@ -713,6 +684,16 @@ extern "C"
      *******************************************************************************
      */
     uint8_t is25pl032_flash_get_hs_direction(void);
+
+    /**
+     * @Description: Flash操作时的中断控制函数
+     * @Parameters : enable - true启用中断，false禁用中断
+     * @RetValue   : 无
+     * @Note       : 在Flash操作前禁用传感器中断，操作后重新启用
+     *               控制ADXL357(PTE1)和IAM20680HT(PTE5)的中断状态
+     *******************************************************************************
+     */
+    void flash_control_sensor_interrupts(bool enable);
 
 #ifdef __cplusplus
 }
