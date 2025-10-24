@@ -6,3 +6,15 @@
 MDK-ARM/inclinometer_dynamic.uvoptx
 MDK-ARM/inclinometer_dynamic.uvguix.*
 Out/
+
+# Version file
+version.h
+
+# JLink log file
+MDK-ARM/JLinkLog.txt
+
+# Markdown files
+*.md
+
+# Patch files
+*.patch

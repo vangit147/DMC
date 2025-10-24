@@ -106,7 +106,7 @@ static int32_t iam_20680ht_write_reg(uint32_t reg, uint32_t data, uint32_t check
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static void iam_20680ht_data_ready_isr(uint32_t int_flag)
+static void iam_20680ht_data_ready_isr(void)
 {
     xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY, eSetBits, NULL, NULL);
 }
@@ -161,7 +161,8 @@ static int32_t iam_20680ht_init(void)
     /*
     注册中断回调函数
     */
-    gpio_porte_register_cb(iam_20680ht_data_ready_isr);
+    // PTE5对应位5
+    gpio_porte_register_cb((1 << 5),iam_20680ht_data_ready_isr);
 
     /*
     Bit7:    -
@@ -199,7 +200,7 @@ static int32_t iam_20680ht_init(void)
     0                       6           5.1             7.8             1
     0                       7           420.0           441.6           1
     */
-    reg_val = 6; // set the frequency of the DLPF of the  to 5 Hz
+    reg_val = 4; // set the frequency of the DLPF of the accelerometer to 21.2 Hz
     iam_20680ht_write_reg(ACCEL_CONFIG_2, reg_val, 1);
 
     /*
