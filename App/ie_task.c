@@ -182,7 +182,7 @@ static void update_drilling_status(void);
 /* 公共函数声明 */
 void getRadiusOffset(float *ry, float *offsetX, float *offsetY, float *rx, float *yrLimit, float *xrLimit);
 void compute_ie(void);
-void interval_info_deal(bool period_end);
+void interval_info_deal(void);
 int32_t get_inc_hs(inclination_hs_t* inc_hs);
 void get_interval_info(interval_info_t* info);
 void reset_interval_info(void);
@@ -533,23 +533,9 @@ void compute_ie()
 
 /**
  * @brief 处理interval_info数据
- * @param period_end 是否是周期结束
  */
-void interval_info_deal(bool period_end)
+void interval_info_deal(void)
 {
-    static uint32_t period_timer = 0;  // 静态变量用于计时
-    
-    // 如果达到日志周期时间或手动触发重置，则执行重置
-    if (period_end || period_timer >= algorithm_setting.log_period_time*50)
-    {
-        reset_interval_info();
-        period_timer = 0;  // 重置计时器
-    }
-    else
-    {
-        period_timer++;  // 增加计时器
-    }
-
     // 更新interval_info中的统计数据
     // 更新虚拟半径的最大最小值
     if (fabs(algorithm_data.rx) > fabs(interval_info.radius_x_max))
@@ -1134,7 +1120,7 @@ void calculate_rotation_radius(float ax, float ay, float gz_dps, float gz_rad)
  *    - calibrate()：对加速度计数据进行离心力补偿，得到ax_cf_g、ay_cf_g等。
  *    - qualify_by_variance()：根据加速度计和陀螺仪的方差，评估当前数据质量等级（C0静止、C1匀速、C2变速）。
  *    - compute_ie()：融合加速度计、陀螺仪数据，计算多种倾角（inc1/2/3）、roll/pitch、高边等姿态参数，并进行中位数滤波。
- *    - interval_info_deal(false)：统计本周期内的最大/最小/均值等区间信息。
+ *    - interval_info_deal()：统计本周期内的最大/最小/均值等区间信息。
  *    - 记录任务执行时间。
  *    - send_msg()：将最新计算结果通过消息队列或串口发送到上位机或其他模块。
  *
@@ -1188,7 +1174,7 @@ void ie_task(void *p)
             // 振动数据收集（每50ms收集一次，相当于20Hz）
             vibration_data_collect();
 
-            interval_info_deal(false);
+            interval_info_deal();
 
              // 计算执行时间（微秒）
             sensor_data.end = xTaskGetTickCount();
