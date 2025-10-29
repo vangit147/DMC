@@ -566,10 +566,10 @@ static void on_100ms_timer_event(void)
     {
         //井下模式才实际上记录日志
         if(downhole==1)
-            record_log_to_flash();
+            record_log_to_flash();  // record_log_to_flash()内部已调用reset_interval_info()
         //无论记录日志与否，都需要重置日志记录周期计数器
         log_period = 0; 
-        reset_interval_info();
+        // reset_interval_info();  // 已移除冗余调用，避免重复重置
     }
 
     
