@@ -60,7 +60,7 @@ echo #define GIT_COMMIT_SHORT "%GIT_COMMIT_SHORT%"
 echo #define GIT_DIRTY "%GIT_DIRTY%"
 echo.
 echo /* Complete version format: base version + git short commit + dirty flag */
-echo #define TGDMC VERSION_BASE "_" GIT_COMMIT_SHORT GIT_DIRTY
+echo #define MDVERSION VERSION_BASE "_" GIT_COMMIT_SHORT GIT_DIRTY
 echo.
 echo /* Version length limit */
 echo #define VERSION_MAX_LENGTH 32
@@ -97,7 +97,7 @@ echo #define GIT_COMMIT_SHORT "unknown"
 echo #define GIT_DIRTY ""
 echo.
 echo /* Complete version format: base version + git short commit + dirty flag */
-echo #define TGDMC VERSION_BASE "_" GIT_COMMIT_SHORT GIT_DIRTY
+echo #define MDVERSION VERSION_BASE "_" GIT_COMMIT_SHORT GIT_DIRTY
 echo.
 echo /* Version length limit */
 echo #define VERSION_MAX_LENGTH 32
