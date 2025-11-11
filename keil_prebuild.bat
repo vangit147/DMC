@@ -31,9 +31,17 @@ for /f "delims=" %%i in ('git status --porcelain 2^>nul') do (
 )
 :dirty_check_done
 
+REM Detect branch name for product prefix
+set VERSION_PREFIX=test
+set CURRENT_BRANCH=
+for /f "delims=" %%i in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set CURRENT_BRANCH=%%i
+if not "%CURRENT_BRANCH%"=="" call :detect_prefix "%CURRENT_BRANCH%"
+
 echo [Version Generation] Current Date: %CURRENT_DATE%
 echo [Version Generation] Git Commit: %GIT_COMMIT_SHORT%
 echo [Version Generation] Has Uncommitted Changes: %GIT_DIRTY%
+echo [Version Generation] Branch Current: %CURRENT_BRANCH%
+echo [Version Generation] Product Prefix: %VERSION_PREFIX%
 
 :generate_version_h
 REM Generate version.h file
@@ -52,7 +60,7 @@ echo #ifndef VERSION_H
 echo #define VERSION_H
 echo.
 echo /* Base version number with current date */
-echo #define VERSION_BASE "TG%CURRENT_DATE%"
+echo #define VERSION_BASE "%VERSION_PREFIX%%CURRENT_DATE%"
 echo.
 echo /* Git commit information - these values will be automatically replaced during build */
 echo #define GIT_COMMIT_HASH "%GIT_COMMIT_HASH%"
@@ -68,7 +76,7 @@ echo.
 echo #endif /* VERSION_H */
 ) > version.h
 
-echo [Version Generation] Version updated: TG%CURRENT_DATE%_%GIT_COMMIT_SHORT%%GIT_DIRTY%
+echo [Version Generation] Version updated: %VERSION_PREFIX%%CURRENT_DATE%_%GIT_COMMIT_SHORT%%GIT_DIRTY%
 echo [Version Generation] Complete!
 exit /b 0
 
@@ -89,7 +97,7 @@ echo #ifndef VERSION_H
 echo #define VERSION_H
 echo.
 echo /* Base version number with current date */
-echo #define VERSION_BASE "TG%CURRENT_DATE%"
+echo #define VERSION_BASE "test%CURRENT_DATE%"
 echo.
 echo /* Git commit information - these values will be automatically replaced during build */
 echo #define GIT_COMMIT_HASH "unknown"
@@ -105,6 +113,28 @@ echo.
 echo #endif /* VERSION_H */
 ) > version.h
 
-echo [Version Generation] Using default version: TG%CURRENT_DATE%_unknown
+echo [Version Generation] Using default version: test%CURRENT_DATE%_unknown
 echo [Version Generation] Complete!
 exit /b 0
+
+:detect_prefix
+set "BRANCH_NAME=%~1"
+if "%BRANCH_NAME%"=="" goto :eof
+set "BRANCH_TOKENS=%BRANCH_NAME:/= %"
+for %%t in (%BRANCH_TOKENS%) do set "BRANCH_BASE=%%t"
+if "%BRANCH_BASE%"=="" set "BRANCH_BASE=%BRANCH_NAME%"
+if /I "%BRANCH_BASE:~0,9%"=="HIGH_SIDE" (
+    set VERSION_PREFIX=HS
+    goto :eof
+)
+for /f "tokens=1 delims=_" %%p in ("%BRANCH_BASE%") do (
+    if /I "%%p"=="TG" (
+        set VERSION_PREFIX=TG
+        goto :eof
+    )
+    if /I "%%p"=="HS" (
+        set VERSION_PREFIX=HS
+        goto :eof
+    )
+)
+goto :eof
