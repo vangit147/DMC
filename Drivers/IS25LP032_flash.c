@@ -168,7 +168,7 @@ static const CFG_T default_cfg = {
     .py = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     .pz = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
     .pro_id = {0},
-    .version = {0},  // 版本字段设为空，版本信息总是从TGDMC宏获取
+    .version = {0},  // 版本字段设为空，版本信息总是从MDVERSION宏获取
     /* 温度补偿范围设置 */
     .temp_comp_lower_limit = -20.0f, // 温度补偿下限，默认-20°C
     .temp_comp_upper_limit = 150.0f, // 温度补偿上限，默认150°C
@@ -1495,8 +1495,8 @@ void is25pl032_flash_get_version(char *version)
     // 始终使用编译时的版本信息，确保版本号与当前代码一致
     // 先清零整个缓冲区
     memset(version, 0, sizeof(dev_cfg.u_cfg.cfg.version));
-    // 复制TGDMC字符串，使用strcpy确保完整复制
-    strcpy(version, TGDMC);
+    // 复制MDVERSION字符串，使用strcpy确保完整复制
+    strcpy(version, MDVERSION);
 }
 
 /**
