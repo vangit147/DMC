@@ -483,10 +483,28 @@ void compute_ie()
     inc_hs_data.inc1_roll = inc_lpf_roll;
     inc_hs_data.inc1_pitch = inc_lpf_pitch;
 
-    local_hs = atan2(sensor_data.ay_lpf_g, (is25pl032_flash_get_hs_direction() == 1) ? sensor_data.ax_lpf_g : -sensor_data.ax_lpf_g) * _180_Div_Pi;
+    // atan2返回值范围是[-180°, 180°]，乘以_180_Div_Pi后范围仍然是[-180°, 180°]
+    local_hs = atan2(sensor_data.ay_lpf_g, sensor_data.ax_lpf_g) * _180_Div_Pi;
 
-    // 转换为[0, 360)范围
-    if (local_hs < 0)
+    // 根据方向标志处理旋转方向
+    if (is25pl032_flash_get_hs_direction() == 0)
+    {
+        // 当direction == 0时：顺时针旋转0°→-180°，逆时针旋转0°→180°
+        // 将角度取反以实现相反的旋转方向
+        local_hs = -local_hs;
+    }
+    // 当direction == 1时：顺时针旋转0°→180°，逆时针旋转0°→-180°（保持原方向）
+
+    // 应用校准偏移（在任意角度校准为0°）
+    local_hs = local_hs - is25pl032_flash_get_calibration_data();
+
+    // 归一化到[-180°, 180°]范围
+    // atan2结果范围是[-180°, 180°]，减去校准偏移后可能超出范围，但最多只需一次归一化
+    if (local_hs > 180.0f)
+    {
+        local_hs -= 360.0f;
+    }
+    else if (local_hs < -180.0f)
     {
         local_hs += 360.0f;
     }
