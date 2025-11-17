@@ -121,9 +121,10 @@ typedef __packed struct // 占用1022字节，最后2字节为CRC16校验和
     uint32_t pulse_interval_for_pump_off_data; 		            //开泵后对停泵状态下静态井斜的重传时间间隔，秒
     uint32_t pulse_interval;									//正常开泵情况下的泥浆脉冲时间传输时间间隔，秒
 
-    // 其他系统参数 (17字节)
+    // 其他系统参数 (21字节)
     uint32_t idle_hook_enable;     // 4字节
     float calibration_data;        // 4字节
+    float calibration_data_dir0;   // 4字节 - 反向模式高边校准
     uint32_t inclination_log_update_period; // 4字节 井斜角度变化时的日志更新频率（秒）
     float inclination_angle_switch;         // 4字节 改变日志更新频率的井斜角度（度）
     uint8_t hs_direction;                   // 1字节 高边方向控制，1=正向，0=反向
@@ -185,7 +186,8 @@ static const CFG_T default_cfg = {
     .pulse_interval = 3600,
     /* 其他系统参数 */
     .idle_hook_enable = 0,      // 低功耗状态
-    .calibration_data = 0.0f,    // 校准数据变量
+    .calibration_data = 0.0f,    // 正向校准数据
+    .calibration_data_dir0 = 0.0f, // 反向模式校准数据
     .inclination_log_update_period = 10, // 默认10秒
     .inclination_angle_switch = 30.0f,   // 默认30度
     .hs_direction = 1,                   // 默认正向
@@ -1819,7 +1821,8 @@ uint32_t is25pl032_flash_get_idle_hook_enable(void)
  */
 float is25pl032_flash_get_calibration_data(void)
 {
-    return dev_cfg.u_cfg.cfg.calibration_data;
+    return (dev_cfg.u_cfg.cfg.hs_direction ? dev_cfg.u_cfg.cfg.calibration_data
+                                           : dev_cfg.u_cfg.cfg.calibration_data_dir0);
 }
 
 /**
@@ -1832,9 +1835,15 @@ float is25pl032_flash_get_calibration_data(void)
  */
 uint32_t is25pl032_flash_set_calibration_data(float calibration_data)
 {
-    dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
-    is25pl032_flash_save_dev_cfg();
-    return 0;
+    if (dev_cfg.u_cfg.cfg.hs_direction)
+    {
+        dev_cfg.u_cfg.cfg.calibration_data = calibration_data;
+    }
+    else
+    {
+        dev_cfg.u_cfg.cfg.calibration_data_dir0 = calibration_data;
+    }
+    return is25pl032_flash_save_dev_cfg();
 }
 
 /**

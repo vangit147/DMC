@@ -199,9 +199,8 @@ void send_msg(void)
         ie1 = inc_hs_data.inc1;
         ie2 = inc_hs_data.inc2;
         ie6 = inc_hs_data.good_inc;
-        hs = inc_hs_data.hs_lpf - is25pl032_flash_get_calibration_data();
-        if(hs<0)
-            hs = 360 + hs;
+        // hs_lpf已经在compute_ie()中应用了校准，范围是[-180, 180]，直接使用
+        hs = inc_hs_data.hs_lpf;
 
         y_radius = algorithm_data.ry;
         ofx = algorithm_setting.acc_x_offset;
