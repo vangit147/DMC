@@ -30,7 +30,7 @@ extern "C" {
 
 // 100Hz采样率FIR低通滤波器类型枚举
 typedef enum {
-    FIR_LOW_100_512_010_CHEB = 0,    // 100Hz低通滤波器（0.1Hz，切比雪夫窗，512阶）
+    FIR_LOW_100_512_015_CHEB = 0,    // 100Hz低通滤波器（0.1Hz，切比雪夫窗，512阶）
     FIR_LOW_100_512_070_CHEB = 1,    // 100Hz低通滤波器（0.7Hz，切比雪夫窗，512阶）
     FIR_LOW_100_512_120_CHEB = 2,    // 100Hz低通滤波器（1.2Hz，切比雪夫窗，512阶）
     FIR_LOW_100_512_170_CHEB = 3,    // 100Hz低通滤波器（1.7Hz，切比雪夫窗，512阶）
@@ -84,6 +84,10 @@ FIR_Lowpass_100_FilterType select_fir_lowpass_filter_type(float32_t rotation_fre
 // FIR滤波器迟滞阈值函数
 float32_t fir_get_upgrade_threshold(FIR_Lowpass_100_FilterType current_type);    // 获取升级阈值
 float32_t fir_get_downgrade_threshold(FIR_Lowpass_100_FilterType current_type);  // 获取降级阈值
+
+// 高通滤波器迟滞阈值函数
+float32_t hpf_get_upgrade_threshold(iir_highpass_100_filter_type_t current_type);    // 获取高通滤波器升级阈值
+float32_t hpf_get_downgrade_threshold(iir_highpass_100_filter_type_t current_type);  // 获取高通滤波器降级阈值
 #ifdef __cplusplus
 }
 #endif

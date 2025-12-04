@@ -32,11 +32,6 @@
 // 角度转弧度系数 (π/180)，保留7位有效数字
 #define DEG_TO_RAD 0.0174533f
 
-// 高通滤波器起始通过频率定义
-#define HPF_THRESHOLD 0.15f  // 当转速大于0.15Hz时，要进行高通滤波
-#define LPF_THRESHOLD 0.15f  // 当转速小于0.15Hz时，要进行低通滤波
-
-#define LPF_DISTANCE 0.25f // 距离阈值，其他所适用的低通滤波器的截止频率-实际频率要大于这个值
 
 
 /* 类型定义 */
