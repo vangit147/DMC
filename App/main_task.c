@@ -59,7 +59,7 @@ static uint32_t avg_count = 0;           // 角速度采样计数
 // 设备状态相关变量
 // 井下状态相关变量：开机20秒后uart1端口无通信则进入井下模式
 int8_t downhole;                  // 井下状态标志 1:井下（记录日志，不响应上位机通信），0:地面（响应上位机通信，不记录日志）
-float vSupply;                  // ADC0_SE2 PTA6 36V电源电压监测值
+float vSupply;                  // ADC1_SE4 PTC6 36V电源电压监测值
 static bool pumping = false;            // 开泵状态:1.开泵中，0.停泵中
 static bool previous_pumping = false;   // 前一状态开泵状态:1.开泵中，0.停泵中
 static uint8_t current_vibration_status = 0;  // 当前振动状态，从on_100ms_timer_event中的局部变量赋值
@@ -147,8 +147,8 @@ void start_and_get_adc_result(void)
     ADC_DRV_WaitConvDone(INST_ADCONV1);//等待转换完成
     ADC_DRV_GetChanResult(INST_ADCONV1, 0, &u16_ADC_raw_result);//获取转换结果
 
-    // 电压缩放系数:21
-    vSupply = (float)u16_ADC_raw_result * 3.300f * 21.0f / 4096.0f;
+    // 电压缩放系数:11
+    vSupply = (float)u16_ADC_raw_result * 3.300f * 11.0f / 4096.0f;
 }
 
 /**
@@ -798,7 +798,7 @@ void record_log_to_flash(void)
     log.timestamp = timestamp;
     log.ax = sensor_data.ax_g;
     log.ay = sensor_data.ay_g;
-    log.az = sensor_data.az_g;
+    log.az = - sensor_data.az_g;
     log.gx = sensor_data.gx_dps;
     log.gy = sensor_data.gy_dps;
     log.gz = sensor_data.gz_dps;

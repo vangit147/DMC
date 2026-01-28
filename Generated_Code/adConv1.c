@@ -63,7 +63,7 @@ const adc_converter_config_t adConv1_ConvConfig0 = {
 
 const adc_chan_config_t adConv1_ChnConfig0 = {
   .interruptEnable = false,
-  .channel = ADC_INPUTCHAN_EXT2,
+  .channel = ADC_INPUTCHAN_EXT4,  // PTC6对应ADC1_SE4，使用EXT4通道
 };
 
 const adc_compare_config_t adConv1_HwCompConfig0 = {

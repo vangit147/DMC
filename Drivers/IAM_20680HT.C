@@ -41,8 +41,8 @@
 #define ROOMTEMP_OFFSET 0x0
 #define TEMP_SENSITIVITY 326.8f
 
-#define EVENT_IAM_20680HT_DATA_READY 0X80000000
-#define EVENT_IAM_20680HT_10MS_TIMER 0X40000000
+#define EVENT_IAM_20680HT_10MS_TIMER 0X08000000
+const uint32_t EVENT_IAM_20680HT_DATA_READY[4] = {0X80000000, 0X40000000, 0X20000000, 0X10000000};
 
 TaskHandle_t iam_20680ht_task_handle;
 
@@ -54,6 +54,13 @@ static int16_t iam_raw_gyro_z;
 static int16_t iam_raw_acc_x;
 static int16_t iam_raw_acc_y;
 static int16_t iam_raw_acc_z;
+static iam_global_raw_data_t s_iam_local_raw_data[4];
+
+static GPIO_Type           *iam_power_port[4];
+static pins_channel_type_t  iam_power_pin[4];
+
+static GPIO_Type           *iam_comm_cs_port[2];
+static pins_channel_type_t  iam_comm_cs_pin[2];
 
 // 全局变量，供其他文件直接访问
 iam_global_raw_data_t s_iam_global_raw_data = {0};
@@ -73,19 +80,19 @@ iam_global_raw_data_t s_iam_global_raw_data = {0};
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static int32_t iam_20680ht_write_reg(uint32_t reg, uint32_t data, uint32_t check)
+static int32_t iam_20680ht_write_reg(uint8_t cs_num, uint32_t reg, uint32_t data, uint32_t check)
 {
     uint32_t cmd_address_data;
 
     /*写数据*/
     cmd_address_data = reg & 0X7f;
     cmd_address_data |= (data & 0xff) << 8;
-    spi0_cs1_transfer((uint8_t *)&cmd_address_data, (uint8_t *)&cmd_address_data, 2);
+    spi1_transfer(cs_num, (uint8_t *)&cmd_address_data, (uint8_t *)&cmd_address_data, 2);
 
     if (check)
     {
         uint8_t rd_val;
-        rd_val = iam_20680ht_read_reg(reg);
+        rd_val = iam_20680ht_read_reg(cs_num, reg);
         if (rd_val != data)
         {
             printf("IAM 20680HT: Write 0x%02x to reg(0x%02x) failed! reg_val:0x%02x\r\n", data, reg, rd_val);
@@ -106,9 +113,24 @@ static int32_t iam_20680ht_write_reg(uint32_t reg, uint32_t data, uint32_t check
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static void iam_20680ht_data_ready_isr(void)
+static void iam_20680ht_data_ready_isr_0(void)
 {
-    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY, eSetBits, NULL, NULL);
+    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY[0], eSetBits, NULL, NULL);
+}
+
+static void iam_20680ht_data_ready_isr_1(void)
+{
+    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY[1], eSetBits, NULL, NULL);
+}
+
+static void iam_20680ht_data_ready_isr_2(void)
+{
+    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY[2], eSetBits, NULL, NULL);
+}
+
+static void iam_20680ht_data_ready_isr_3(void)
+{
+    xTaskGenericNotifyFromISR(iam_20680ht_task_handle, EVENT_IAM_20680HT_DATA_READY[3], eSetBits, NULL, NULL);
 }
 
 /**
@@ -121,7 +143,7 @@ static void iam_20680ht_data_ready_isr(void)
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static int32_t iam_20680ht_init(void)
+static int32_t iam_20680ht_init(uint8_t cs_num)
 {
     const char *info[2] = {"NOT ", ""};
     uint32_t found = 0;
@@ -137,9 +159,9 @@ static int32_t iam_20680ht_init(void)
     Bit3: TEMP_DIS
     Bit2..0: CLKSEL[2:0]
     */
-    iam_20680ht_write_reg(PWR_MGMT_1, 0X80, 0);
+    iam_20680ht_write_reg(cs_num, PWR_MGMT_1, 0X80, 0);
     vTaskDelay(1);
-    reg_val = iam_20680ht_read_reg(PWR_MGMT_1);
+    reg_val = iam_20680ht_read_reg(cs_num, PWR_MGMT_1);
     printf("IAM 20680HT: PWR_MGMT_1 = 0x%02x\r\n", reg_val);
     vTaskDelay(1);
 
@@ -148,7 +170,7 @@ static int32_t iam_20680ht_init(void)
     */
     for (int i = 0; i < 10; i++)
     {
-        reg_val = iam_20680ht_read_reg(WHO_AM_I);
+        reg_val = iam_20680ht_read_reg(cs_num, WHO_AM_I);
         if (reg_val == DEVICE_ID)
         {
             found = 1;
@@ -159,19 +181,13 @@ static int32_t iam_20680ht_init(void)
     printf("%sFound IAM_20680HT! ID=0x%02x\r\n", info[found], reg_val);
 
     /*
-    注册中断回调函数
-    */
-    // PTE5对应位5
-    gpio_porte_register_cb((1 << 5),iam_20680ht_data_ready_isr);
-
-    /*
     Bit7:    -
     Bit6:    FIFO_MODE, 0--Overwrite 1--Discard
     Bit5..3: EXT_SYNC_SET[2:0]
     Bit2..0: DLPF_CFG[2:0]
     */
     reg_val = 6; // set the corner frequency of the DLPF of the gyroscope to 5 Hz
-    iam_20680ht_write_reg(CONFIG, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, CONFIG, reg_val, 1);
 
     /*
     [7:6] FIFO_SIZE[1:0]
@@ -200,8 +216,8 @@ static int32_t iam_20680ht_init(void)
     0                       6           5.1             7.8             1
     0                       7           420.0           441.6           1
     */
-    reg_val = 4; // set the frequency of the DLPF of the accelerometer to 21.2 Hz
-    iam_20680ht_write_reg(ACCEL_CONFIG_2, reg_val, 1);
+    reg_val = 6; // set the frequency of the DLPF of the  to 5 Hz
+    iam_20680ht_write_reg(cs_num, ACCEL_CONFIG_2, reg_val, 1);
 
     /*
     Bit7: XG_ST
@@ -216,18 +232,18 @@ static int32_t iam_20680ht_init(void)
     Bit1..0: FCHOICE_B[1:0]
     */
 
-    reg_val = iam_20680ht_read_reg(GYRO_CONFIG);
+    reg_val = iam_20680ht_read_reg(cs_num, GYRO_CONFIG);
     reg_val &= ~0x3 << 3;
     reg_val |= 0x3 << 3; // GYO量程：±2000 dps
-    iam_20680ht_write_reg(GYRO_CONFIG, reg_val, 1);
-    reg_val = iam_20680ht_read_reg(GYRO_CONFIG);
+    iam_20680ht_write_reg(cs_num, GYRO_CONFIG, reg_val, 1);
+    reg_val = iam_20680ht_read_reg(cs_num, GYRO_CONFIG);
 
     /*Output Data Rate Selection
     SAMPLE_RATE = INTERNAL_SAMPLE_RATE / (1 + SMPLRT_DIV)
     Where INTERNAL_SAMPLE_RATE = 1 kHz
     数据输出率：250HZ
     */
-    iam_20680ht_write_reg(SMPLRT_DIV, 3, 1);
+    iam_20680ht_write_reg(cs_num, SMPLRT_DIV, 3, 1);
 
     /*
     ACC_CONFIG: 0X1C
@@ -237,7 +253,7 @@ static int32_t iam_20680ht_init(void)
     Bit4..3: ACCEL_FS_SEL[1:0]
     */
     reg_val = 2 << 3; // ±8G
-    iam_20680ht_write_reg(ACCEL_CONFIG, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, ACCEL_CONFIG, reg_val, 1);
     /*
     Bit7: TEMP_FIFO_EN
     Bit6: XG_FIFO_EN
@@ -249,7 +265,7 @@ static int32_t iam_20680ht_init(void)
     Bit0: -
     */
     reg_val = 0xf8;
-    iam_20680ht_write_reg(FIFO_EN, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, FIFO_EN, reg_val, 1);
 
     /*
     USER_CTRL:0x6a
@@ -263,7 +279,7 @@ static int32_t iam_20680ht_init(void)
     Bit0: SIG_COND_RST
     */
     reg_val = 0x1 << 6;
-    iam_20680ht_write_reg(USER_CTRL, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, USER_CTRL, reg_val, 1);
 
     /*
     中断引脚配置
@@ -277,7 +293,7 @@ static int32_t iam_20680ht_init(void)
     Bit0: INT2_EN
     */
     reg_val = 0xc0;
-    iam_20680ht_write_reg(INT_PIN_CFG, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, INT_PIN_CFG, reg_val, 1);
 
     /*
     中断使能
@@ -289,7 +305,7 @@ static int32_t iam_20680ht_init(void)
     Bit0:    DATA_RDY_INT_EN
     */
     reg_val = 0x11;
-    iam_20680ht_write_reg(INT_ENABLE, reg_val, 1);
+    iam_20680ht_write_reg(cs_num, INT_ENABLE, reg_val, 1);
 
     return found;
 }
@@ -304,14 +320,14 @@ static int32_t iam_20680ht_init(void)
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-uint8_t iam_20680ht_read_reg(uint32_t reg)
+uint8_t iam_20680ht_read_reg(uint8_t cs_num, uint32_t reg)
 {
     uint32_t cmd_address_data;
     uint8_t rd_val;
 
     /*读数据*/
     cmd_address_data = reg | 0x80;
-    spi0_cs1_transfer((uint8_t *)&cmd_address_data, (uint8_t *)&cmd_address_data, 2);
+    spi1_transfer(cs_num, (uint8_t *)&cmd_address_data, (uint8_t *)&cmd_address_data, 2);
     rd_val = cmd_address_data >> 8;
 
     return rd_val;
@@ -327,13 +343,14 @@ uint8_t iam_20680ht_read_reg(uint32_t reg)
   * @CreatedDate: 2025.04.07
   *******************************************************************************
   */
-static void iam_20680ht_on_rd_event(void)
+static void iam_20680ht_on_rd_event(uint8_t index)
 {
     static uint8_t cmd_data[512 + 2]; // FIFO默认长度是512字节
     uint16_t fifo_counth, fifo_countl, int_status;
     uint16_t fifo_count;
     static int16_t last_adc_temp;
     int16_t current_temp, temp_diff;
+    uint8_t local_index = index;
 
     /*
     中断状态寄存器
@@ -345,15 +362,15 @@ static void iam_20680ht_on_rd_event(void)
     Bit0: DATA _RDY_INT
     */
     int_status = (INT_STATUS | 0x80);
-    spi0_cs1_transfer((uint8_t *)&int_status, (uint8_t *)&int_status, 2);
+    spi1_transfer(local_index, (uint8_t *)&int_status, (uint8_t *)&int_status, 2);
     if ((int_status & 0x1100) == 0)
         return;
 
     // 读取FIFO数据长度
     fifo_counth = (FIFO_COUNTH | 0x80);
-    spi0_cs1_transfer((uint8_t *)&fifo_counth, (uint8_t *)&fifo_counth, 2);
+    spi1_transfer(local_index, (uint8_t *)&fifo_counth, (uint8_t *)&fifo_counth, 2);
     fifo_countl = (FIFO_COUNTL | 0x80);
-    spi0_cs1_transfer((uint8_t *)&fifo_countl, (uint8_t *)&fifo_countl, 2);
+    spi1_transfer(local_index, (uint8_t *)&fifo_countl, (uint8_t *)&fifo_countl, 2);
 
     fifo_count = (fifo_counth & 0xff00) | (fifo_countl >> 8 & 0xff);
     fifo_count++; // 第一个字节为寄存器地址
@@ -362,7 +379,7 @@ static void iam_20680ht_on_rd_event(void)
 
     // 读取数据
     cmd_data[0] = (FIFO_R_W | 0x80);
-    spi0_cs1_transfer((uint8_t *)cmd_data, (uint8_t *)&cmd_data, fifo_count);
+    spi1_transfer(local_index, (uint8_t *)cmd_data, (uint8_t *)&cmd_data, fifo_count);
 
     // Convention: NED
     // 先计算温度，如果与上次的值相差较大，则丢弃本次采样值，以上次的值为准。
@@ -371,7 +388,6 @@ static void iam_20680ht_on_rd_event(void)
     if (-(int32_t)TEMP_SENSITIVITY <= temp_diff && temp_diff <= (int32_t)TEMP_SENSITIVITY)
     {
         iam_raw_acc_z = cmd_data[1] << 8 | cmd_data[2];
-        ;
         iam_raw_acc_x = cmd_data[3] << 8 | cmd_data[4];
         iam_raw_acc_y = cmd_data[5] << 8 | cmd_data[6];
         iam_raw_temp = cmd_data[7] << 8 | cmd_data[8];
@@ -387,13 +403,21 @@ static void iam_20680ht_on_rd_event(void)
     // 暂停所有任务，保护数据访问
  //   vTaskSuspendAll();
     
-    s_iam_global_raw_data.t_raw = iam_raw_temp;
-    s_iam_global_raw_data.gx_raw = iam_raw_gyro_x;
-    s_iam_global_raw_data.gy_raw = iam_raw_gyro_y;
-    s_iam_global_raw_data.gz_raw = iam_raw_gyro_z;
-    s_iam_global_raw_data.ax_raw = iam_raw_acc_x;
-    s_iam_global_raw_data.ay_raw = iam_raw_acc_y;
-    s_iam_global_raw_data.az_raw = iam_raw_acc_z;
+    s_iam_local_raw_data[local_index].t_raw = iam_raw_temp;
+    s_iam_local_raw_data[local_index].gx_raw = iam_raw_gyro_x;
+    s_iam_local_raw_data[local_index].gy_raw = iam_raw_gyro_y;
+    s_iam_local_raw_data[local_index].gz_raw = iam_raw_gyro_z;
+    s_iam_local_raw_data[local_index].ax_raw = iam_raw_acc_x;
+    s_iam_local_raw_data[local_index].ay_raw = iam_raw_acc_y;
+    s_iam_local_raw_data[local_index].az_raw = iam_raw_acc_z;
+
+    s_iam_global_raw_data.t_raw = s_iam_local_raw_data[local_index].t_raw;
+    s_iam_global_raw_data.gx_raw = s_iam_local_raw_data[local_index].gx_raw;
+    s_iam_global_raw_data.gy_raw = s_iam_local_raw_data[local_index].gy_raw;
+    s_iam_global_raw_data.gz_raw = s_iam_local_raw_data[local_index].gz_raw;
+    s_iam_global_raw_data.ax_raw = s_iam_local_raw_data[local_index].ax_raw;
+    s_iam_global_raw_data.ay_raw = s_iam_local_raw_data[local_index].ay_raw;
+    s_iam_global_raw_data.az_raw = s_iam_local_raw_data[local_index].az_raw;
     
     // 恢复所有任务
  //   xTaskResumeAll();
@@ -414,6 +438,74 @@ static void iam_10ms_timer_cb(TimerHandle_t xTimer)
     xTaskGenericNotify(iam_20680ht_task_handle, EVENT_IAM_20680HT_10MS_TIMER, eSetBits, NULL);
 }
 
+static void iam_power_register(void)
+{
+    iam_power_port[0] = PTA;
+    iam_power_pin[0] = 0;
+
+    iam_power_port[1] = PTA;
+    iam_power_pin[1] = 1;
+
+    iam_power_port[2] = PTB;
+    iam_power_pin[2] = 12;
+
+    iam_power_port[3] = PTB;
+    iam_power_pin[3] = 13;
+
+    iam_comm_cs_port[0] = PTD;
+    iam_comm_cs_pin[0] = 15;
+
+    iam_comm_cs_port[1] = PTD;
+    iam_comm_cs_pin[1] = 16;
+}
+
+static void iam_power_on(uint8_t index)
+{
+    switch(index)
+    {
+        case 0:
+            PINS_DRV_WritePin(iam_power_port[0], iam_power_pin[0], 0);
+            PINS_DRV_WritePin(iam_power_port[1], iam_power_pin[1], 1);
+            PINS_DRV_WritePin(iam_power_port[2], iam_power_pin[2], 1);
+            PINS_DRV_WritePin(iam_power_port[3], iam_power_pin[3], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[0], iam_comm_cs_pin[0], 0);
+            PINS_DRV_WritePin(iam_comm_cs_port[1], iam_comm_cs_pin[1], 0);
+        break;
+        case 1:
+            PINS_DRV_WritePin(iam_power_port[0], iam_power_pin[0], 1);
+            PINS_DRV_WritePin(iam_power_port[1], iam_power_pin[1], 0);
+            PINS_DRV_WritePin(iam_power_port[2], iam_power_pin[2], 1);
+            PINS_DRV_WritePin(iam_power_port[3], iam_power_pin[3], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[0], iam_comm_cs_pin[0], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[1], iam_comm_cs_pin[1], 0);
+        break;
+        case 2:
+            PINS_DRV_WritePin(iam_power_port[0], iam_power_pin[0], 1);
+            PINS_DRV_WritePin(iam_power_port[1], iam_power_pin[1], 1);
+            PINS_DRV_WritePin(iam_power_port[2], iam_power_pin[2], 0);
+            PINS_DRV_WritePin(iam_power_port[3], iam_power_pin[3], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[0], iam_comm_cs_pin[0], 0);
+            PINS_DRV_WritePin(iam_comm_cs_port[1], iam_comm_cs_pin[1], 1);
+        break;
+        case 3:
+            PINS_DRV_WritePin(iam_power_port[0], iam_power_pin[0], 1);
+            PINS_DRV_WritePin(iam_power_port[1], iam_power_pin[1], 1);
+            PINS_DRV_WritePin(iam_power_port[2], iam_power_pin[2], 1);
+            PINS_DRV_WritePin(iam_power_port[3], iam_power_pin[3], 0);
+            PINS_DRV_WritePin(iam_comm_cs_port[0], iam_comm_cs_pin[0], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[1], iam_comm_cs_pin[1], 1);
+        break;
+        default:
+            PINS_DRV_WritePin(iam_power_port[0], iam_power_pin[0], 1);
+            PINS_DRV_WritePin(iam_power_port[1], iam_power_pin[1], 1);
+            PINS_DRV_WritePin(iam_power_port[2], iam_power_pin[2], 1);
+            PINS_DRV_WritePin(iam_power_port[3], iam_power_pin[3], 1);
+            PINS_DRV_WritePin(iam_comm_cs_port[0], iam_comm_cs_pin[0], 0);
+            PINS_DRV_WritePin(iam_comm_cs_port[1], iam_comm_cs_pin[1], 0);
+        break;
+    }
+}
+
 /**
   *******************************************************************************
   * @Description: IAM-20680HT传感器任务
@@ -426,9 +518,26 @@ static void iam_10ms_timer_cb(TimerHandle_t xTimer)
   */
 void iam_20680ht_task(void *p)
 {
-    iam_20680ht_init();
-    
-    xTimerStart(xTimerCreate("iam_10ms_timer", 20, 1, 0, iam_10ms_timer_cb), 1000);
+//    uint8_t i;
+    static uint8_t current_sensor = 0;  // 当前使用的传感器索引 0-3
+//    static uint32_t switch_counter = 0;  // 切换计数器
+//    const uint32_t SWITCH_INTERVAL_MS = 10000;  // 切换间隔10秒
+//    const uint32_t TIMER_PERIOD_MS = 10;  // 定时器周期10ms
+//    const uint32_t SWITCH_THRESHOLD = SWITCH_INTERVAL_MS / TIMER_PERIOD_MS;  // 切换阈值
+
+    /*    注册中断回调函数    */
+    gpio_porte_register_cb(3, iam_20680ht_data_ready_isr_0); //PE3
+    gpio_porte_register_cb(0, iam_20680ht_data_ready_isr_1); //PE0
+    gpio_portc_register_cb(8, iam_20680ht_data_ready_isr_2); //PC8
+    gpio_porte_register_cb(2, iam_20680ht_data_ready_isr_3); //PE2
+
+    iam_power_register();
+
+    iam_power_on(current_sensor);
+    vTaskDelay(10);  // 等待电源稳定
+    iam_20680ht_init(current_sensor);
+
+    xTimerStart(xTimerCreate("iam_10ms_timer", 10, 1, 0, iam_10ms_timer_cb), 1000);
 
     uint32_t start_timestamp = xTaskGetTickCount();
 
@@ -437,9 +546,37 @@ void iam_20680ht_task(void *p)
         uint32_t notify;
         xTaskNotifyWait(0x0, 0xffffffff, &notify, portMAX_DELAY);
 
-        if (notify & EVENT_IAM_20680HT_DATA_READY)
-            iam_20680ht_on_rd_event();
+        // 处理10ms定时器事件 - 用于传感器切换
+        if (notify & EVENT_IAM_20680HT_10MS_TIMER)
+        {
+            if (notify & EVENT_IAM_20680HT_DATA_READY[current_sensor])
+                iam_20680ht_on_rd_event(current_sensor);
+//            for(i = 0; i < 4; i++)
+//            {
+//                if (notify & EVENT_IAM_20680HT_DATA_READY[i])
+//                    iam_20680ht_on_rd_event(i);
+//            }
+//
+//            switch_counter++;
+//
+//            // 到达切换时间
+//            if (switch_counter >= SWITCH_THRESHOLD)
+//            {
+//                switch_counter = 0;
+//                uint8_t next_sensor = (current_sensor + 1) % 4;
+//
+//                // 关闭当前传感器电源
+//                iam_power_off(current_sensor);
+//                // 打开新传感器电源
+//                iam_power_on(next_sensor);
+//                vTaskDelay(10);  // 等待电源稳定
+//
+//                // 初始化新传感器
+//                iam_20680ht_init(next_sensor);
+//                current_sensor = next_sensor;
+//            }
+        }
     }
 }
-//START_TASK(iam_20680ht_task, "iam_20680ht_task", 256, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
+START_TASK(iam_20680ht_task, "iam_20680ht_task", 256, NULL, TASK_PRIORITY_IAM, &iam_20680ht_task_handle);
 

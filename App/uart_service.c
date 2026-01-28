@@ -190,7 +190,7 @@ void send_msg(void)
         temperature = sensor_data.t_C;
         acc_x = sensor_data.ax_g;
         acc_y = sensor_data.ay_g;
-        acc_z = sensor_data.az_g;
+        acc_z = - sensor_data.az_g;
         gyro_x = sensor_data.gx_dps;
         gyro_y = sensor_data.gy_dps;
         gyro_z = sensor_data.gz_dps;
@@ -303,7 +303,7 @@ void send_msg(void)
 
         float org_ax = filtered_sensor_signal.ax_raw;
         float org_ay = filtered_sensor_signal.ay_raw;
-        float org_az = filtered_sensor_signal.az_raw;
+        float org_az = - filtered_sensor_signal.az_raw;
         float org_gx = filtered_sensor_signal.gx_raw;
         float org_gy = filtered_sensor_signal.gy_raw;
         float org_gz = filtered_sensor_signal.gz_raw;

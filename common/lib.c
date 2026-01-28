@@ -45,15 +45,16 @@ static const uint8_t auchCRCLo[] =
 };
 
 
-uint16_t Lib_ModbusCrc(uint8_t *data, uint16_t len)
+uint16_t Lib_ModbusCrc(void *data, uint16_t len)
 {
+    unsigned char* pch = (unsigned char*)data;
 	uint8_t uchCRCHi = 0xFF;
 	uint8_t uchCRCLo = 0xFF;
 	uint8_t uIndex;
 
 	while(len--)
 	{
-		uIndex = uchCRCHi ^ * data++;
+		uIndex = uchCRCHi ^ * pch++;
 		uchCRCHi = uchCRCLo ^ auchCRCHi[uIndex];
 		uchCRCLo = auchCRCLo[uIndex];
 	}

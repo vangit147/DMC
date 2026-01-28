@@ -77,7 +77,7 @@
 #include "adc_driver.h"
 
 /*! @brief Device instance number */
-#define INST_ADCONV1 0U
+#define INST_ADCONV1 1U  // 使用ADC1，因为PTC6对应ADC1_SE4
 
 /*! @brief Configuration declaration */
 extern const adc_converter_config_t adConv1_ConvConfig0;

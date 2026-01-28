@@ -39,10 +39,9 @@ extern iam_global_raw_data_t s_iam_global_raw_data;
 extern TaskHandle_t iam_20680ht_task_handle;
 
 // 添加iam_20680ht_read_reg函数声明
-uint8_t iam_20680ht_read_reg(uint32_t reg);
+uint8_t iam_20680ht_read_reg(uint8_t cs_num, uint32_t reg);
 
 // 函数声明
-int32_t iam_20680ht_init(void);
 void iam_20680ht_task(void *pvParameters);
 
 #endif /* __IAM_20680HT_H__ */

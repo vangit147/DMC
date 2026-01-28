@@ -83,7 +83,7 @@ extern clock_manager_user_config_t const *g_clockManConfigsArr[];
 extern peripheral_clock_config_t peripheralClockConfig0[];
 
 /*! @brief Count of peripheral clock user configurations */
-#define NUM_OF_PERIPHERAL_CLOCKS_0 19U
+#define NUM_OF_PERIPHERAL_CLOCKS_0 20U
 
 
 /*! @brief Count of user Callbacks */
