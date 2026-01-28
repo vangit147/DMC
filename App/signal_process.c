@@ -322,8 +322,8 @@ void signal_process_init(void)
         iir_highpass_filter_16th_init(&iir_acc_y_highpass_filters[i], highpass_filter_types[i]);
     }
 
-    // 初始化当前滤波器类型为默认的0.1Hz低通切比雪夫窗512阶 (100Hz采样率)
-    sensor_signal.current_filter_type = FIR_LOW_100_512_010_CHEB;  // 使用100Hz采样率
+    // 初始化当前滤波器类型为默认的0.15Hz低通切比雪夫窗512阶 (100Hz采样率)
+    sensor_signal.current_filter_type = FIR_LOW_100_512_015_CHEB;  // 使用100Hz采样率
     sensor_signal.current_hpf_filter_type = IIR_HIGHPASS_100_000_HZ;  // 使用100Hz采样率
 
     // 初始化用于陀螺仪Z轴的16选8中位数滤波器和混合延时补偿器
@@ -466,35 +466,36 @@ void signal_process_fir_filter(void)
     FIR_Lowpass_100_FilterType target_filter = select_fir_lowpass_filter_type(rotation_freq);
 
 
-    // 3.2 迟滞机制 - 避免频繁切换
-    // 改进的迟滞逻辑：比较rotation_freq与当前滤波器的升级/降级阈值
+    // 3.2 迟滞机制 - 避免频繁切换（区分相邻和非相邻切换）
     bool switch_or_not = true;
 
     // 如果当前滤波器和目标滤波器相同，不切换
     if (sensor_signal.current_filter_type == target_filter) {
         switch_or_not = false;
     }
-    else {
-        // 获取当前滤波器的升级和降级阈值
+    else if (abs(target_filter - sensor_signal.current_filter_type) == 1) {
+        // 相邻切换，使用迟滞机制
         float upgrade_threshold = fir_get_upgrade_threshold(sensor_signal.current_filter_type);
         float downgrade_threshold = fir_get_downgrade_threshold(sensor_signal.current_filter_type);
 
-        // 迟滞判断：
-
         // 检查是否应该升级（切换到更高档位）
         if (target_filter > sensor_signal.current_filter_type) {
-            // 升级条件：rotation_freq必须超过升级阈值+裕度
-            if (rotation_freq < upgrade_threshold ) {
+            // 升级条件：rotation_freq必须超过升级阈值
+            if (rotation_freq < upgrade_threshold) {
                 switch_or_not = false;
             }
         }
         // 检查是否应该降级（切换到更低档位）
         else if (target_filter < sensor_signal.current_filter_type) {
-            // 降级条件：rotation_freq必须低于降级阈值-裕度
-            if (rotation_freq > downgrade_threshold ) {
+            // 降级条件：rotation_freq必须低于降级阈值
+            if (rotation_freq > downgrade_threshold) {
                 switch_or_not = false;
             }
         }
+    }
+    else {
+        // 非相邻切换，直接切换（允许快速变化）
+        switch_or_not = true;
     }
 
     // 4 动态切换X/Y轴滤波器（仅在需要时切换）
@@ -528,15 +529,50 @@ void signal_process_fir_filter(void)
 
     process_time_signal_process5=xTaskGetTickCount()-start_time;
     start_time = xTaskGetTickCount();
-     // 5.2 根据旋转频率选择合适的高通滤波器输出
-    if(rotation_freq > HPF_THRESHOLD) {
-        iir_highpass_100_filter_type_t selected_highpass_type = select_highpass_filter_type(rotation_freq);
-        sensor_signal.current_hpf_filter_type = selected_highpass_type;  // 使用100Hz采样率
-        // 使用选中的高通滤波器输出
-        if(selected_highpass_type != IIR_HIGHPASS_100_000_HZ) {
-            filtered_sensor_signal.ax_raw = highpass_x_outputs[selected_highpass_type];
-            filtered_sensor_signal.ay_raw = highpass_y_outputs[selected_highpass_type];
+
+    // 5.2 根据旋转频率选择合适的高通滤波器输出（增加迟滞机制）
+    iir_highpass_100_filter_type_t target_highpass_type = select_highpass_filter_type(rotation_freq);
+    bool hpf_switch_or_not = true;
+
+    // 5.2.1 区分相邻和非相邻切换
+    if (target_highpass_type == sensor_signal.current_hpf_filter_type) {
+        // 相同滤波器，不切换
+        hpf_switch_or_not = false;
+    }
+    else if (abs(target_highpass_type - sensor_signal.current_hpf_filter_type) == 1) {
+    // 相邻切换，使用迟滞机制
+        float hpf_upgrade_threshold = hpf_get_upgrade_threshold(sensor_signal.current_hpf_filter_type);
+        float hpf_downgrade_threshold = hpf_get_downgrade_threshold(sensor_signal.current_hpf_filter_type);
+
+        // 检查是否应该升级（切换到更高档位）
+        if (target_highpass_type > sensor_signal.current_hpf_filter_type) {
+            // 升级条件：rotation_freq必须超过升级阈值
+            if (rotation_freq <= hpf_upgrade_threshold) {
+                hpf_switch_or_not = false;
+            }
         }
+            // 检查是否应该降级（切换到更低档位）
+        else if (target_highpass_type < sensor_signal.current_hpf_filter_type) {
+            // 降级条件：rotation_freq必须低于降级阈值
+            if (rotation_freq >= hpf_downgrade_threshold) {
+            hpf_switch_or_not = false;
+            }
+        }
+    }
+    else {
+        // 非相邻切换，直接切换（允许快速变化）
+        hpf_switch_or_not = true;
+    }
+
+    // 动态切换高通滤波器（仅在需要时切换）
+    if (target_highpass_type != sensor_signal.current_hpf_filter_type && hpf_switch_or_not) {
+        sensor_signal.current_hpf_filter_type = target_highpass_type;
+    }
+
+    // 使用选中的高通滤波器输出
+    if(sensor_signal.current_hpf_filter_type != IIR_HIGHPASS_100_000_HZ) {
+        filtered_sensor_signal.ax_raw = highpass_x_outputs[sensor_signal.current_hpf_filter_type];
+        filtered_sensor_signal.ay_raw = highpass_y_outputs[sensor_signal.current_hpf_filter_type];
     }
 
     process_time_signal_process6=xTaskGetTickCount()-start_time;
