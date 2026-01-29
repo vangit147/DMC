@@ -422,16 +422,19 @@ int32_t spi1_init(void)
 
     lpspiCom1_MasterConfig0.callback = spi1_callback;
     INT_SYS_InstallHandler(LPSPI1_IRQn, LPSPI1_IRQHandler, 0);
-    INT_SYS_SetPriority(LPSPI1_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 2);
+    // 将SPI1中断优先级降低到与SPI2相同，避免SPI2中断被延迟处理，修复ADS1278数据跳变问题
+    INT_SYS_SetPriority(LPSPI1_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 1);
     LPSPI_DRV_MasterInit(LPSPICOM1, &lpspiCom1State, &lpspiCom1_MasterConfig0);
 
     if (lpspiCom1_MasterConfig0.transferType == LPSPI_USING_DMA)
     {
         INT_SYS_InstallHandler((IRQn_Type)lpspiCom1_MasterConfig0.rxDMAChannel, get_DMA_IRQHandler(lpspiCom1_MasterConfig0.rxDMAChannel), 0);
-        INT_SYS_SetPriority((IRQn_Type)lpspiCom1_MasterConfig0.rxDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 2);
+        // DMA中断优先级也相应降低
+        INT_SYS_SetPriority((IRQn_Type)lpspiCom1_MasterConfig0.rxDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 1);
 
         INT_SYS_InstallHandler((IRQn_Type)lpspiCom1_MasterConfig0.txDMAChannel, get_DMA_IRQHandler(lpspiCom1_MasterConfig0.txDMAChannel), 0);
-        INT_SYS_SetPriority((IRQn_Type)lpspiCom1_MasterConfig0.txDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 2);
+        // DMA中断优先级也相应降低
+        INT_SYS_SetPriority((IRQn_Type)lpspiCom1_MasterConfig0.txDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 1);
     }
     return 0;
 }
