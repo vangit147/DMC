@@ -332,7 +332,7 @@ static void lpuart2_tx_callback(void *driverState, uart_event_t event, void *use
                                               lpuart2_tx_sending_buffer, sizeof(lpuart2_tx_sending_buffer), &lpuart2_tx_sending_data_len);
             if(ret == 0)
             {
-                PINS_DRV_WritePin(PTD, 5, !RS485_TX_LEVEL);
+//                PINS_DRV_WritePin(PTD, 5, !RS485_TX_LEVEL);
             }
             break;
 
@@ -542,7 +542,7 @@ int32_t LPUART2_send(uint8_t* data, uint32_t len)
     if(lpuart2_init_flag == 0)
         return -1;
 
-    PINS_DRV_WritePin(PTD, 5, RS485_TX_LEVEL);
+//    PINS_DRV_WritePin(PTD, 5, RS485_TX_LEVEL);
     return  uart_general_send(INST_LPUART2, data, len,
                               lpuart2_tx_fifo, sizeof(lpuart2_tx_fifo), &lpuart2_tx_fifo_data_len,
                               &lpuart2_tx_fifo_wr_pos, lpuart2_tx_sending_buffer,

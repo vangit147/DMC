@@ -257,7 +257,7 @@ pin_settings_config_t g_pin_mux_InitConfigArr[NUM_OF_CONFIGURED_PINS] =
         .gpioBase      = NULL,
         .digitalFilter = false,
     },
-    {//485-CTRL
+    {//485-DE
         .base          = PORTD,
         .pinPortIdx    = 5u,
         .pullConfig    = PORT_INTERNAL_PULL_NOT_ENABLED,
@@ -270,7 +270,7 @@ pin_settings_config_t g_pin_mux_InitConfigArr[NUM_OF_CONFIGURED_PINS] =
         .gpioBase      = PTD,
         .direction     = GPIO_OUTPUT_DIRECTION,
         .digitalFilter = false,
-        .initValue     = 0u,
+        .initValue     = 1u,
     },
     {//SPI2-MOSI
         .base          = PORTC,
@@ -339,6 +339,21 @@ pin_settings_config_t g_pin_mux_InitConfigArr[NUM_OF_CONFIGURED_PINS] =
         .clearIntFlag  = false,
         .gpioBase      = NULL,
         .digitalFilter = false,
+    },
+    {//485-RE
+        .base          = PORTC,
+        .pinPortIdx    = 14u,
+        .pullConfig    = PORT_INTERNAL_PULL_NOT_ENABLED,
+        .passiveFilter = false,
+        .driveSelect   = PORT_LOW_DRIVE_STRENGTH,
+        .mux           = PORT_MUX_AS_GPIO,
+        .pinLock       = false,
+        .intConfig     = PORT_DMA_INT_DISABLED,
+        .clearIntFlag  = false,
+        .gpioBase      = PTC,
+        .direction     = GPIO_OUTPUT_DIRECTION,
+        .digitalFilter = false,
+        .initValue     = 0u,
     },
     {//SPI0-MISO
         .base          = PORTB,
