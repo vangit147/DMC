@@ -519,7 +519,7 @@ static void iam_power_on(uint8_t index)
 void iam_20680ht_task(void *p)
 {
 //    uint8_t i;
-    static uint8_t current_sensor = 0;  // 当前使用的传感器索引 0-3
+    static uint8_t current_sensor = 3;  // 当前使用的传感器索引 0-3
 //    static uint32_t switch_counter = 0;  // 切换计数器
 //    const uint32_t SWITCH_INTERVAL_MS = 10000;  // 切换间隔10秒
 //    const uint32_t TIMER_PERIOD_MS = 10;  // 定时器周期10ms
