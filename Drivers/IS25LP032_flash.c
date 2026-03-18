@@ -370,8 +370,8 @@ int32_t is25pl032_flash_read_one_log(log_t *log)
 
         if (log->crc16 == CRC16(log, sizeof(log_t) - 2))
             return 1;
-        else
-            printf("Reading ONE log failed! log->crc16=%d,CRC16(log, sizeof(log_t) - 2)=%d,rd_index=%d flash_address=0x%08x\r\n", log->crc16, CRC16(log, sizeof(log_t) - 2), rd_index, flash_address);
+//        else
+            /* printf("Reading ONE log failed! log->crc16=%d,CRC16(log, sizeof(log_t) - 2)=%d,rd_index=%d flash_address=0x%08x\r\n", log->crc16, CRC16(log, sizeof(log_t) - 2), rd_index, flash_address); */
     }
     return 0;
 }
@@ -441,8 +441,8 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         is25pl032_flash_normal_read(flash_wr_address, (uint8_t *)&log_rd, sizeof(log_t));
         if (memcmp(&log_rd, log, sizeof(log_t)) == 0)
             break;
-        else
-            printf("Writing ONE log failed! log_context.log_write_index=%d flash_wr_address=0x%08x\r\n", log_context.log_write_index, flash_wr_address);
+//        else
+            /* printf("Writing ONE log failed! log_context.log_write_index=%d flash_wr_address=0x%08x\r\n", log_context.log_write_index, flash_wr_address); */
     }
 
     if (i == 3)
@@ -496,7 +496,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
         // 如果值不正确，则恢复
         if (init_flag != FLASH_INITED_FLAG)
         {
-            printf("FLASH_INITED_FLAG changed to 0x%08X, restoring...\r\n", init_flag);
+            /* printf("FLASH_INITED_FLAG changed to 0x%08X, restoring...\r\n", init_flag); */
 
             // 准备写入数据
             memset(flash_temp_buffer, 0xff, sizeof(flash_temp_buffer));
@@ -506,7 +506,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
             ret = is25pl032_flash_normal_write(0, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
             if (ret != 0)
             {
-                printf("Failed to restore FLASH_INITED_FLAG on attempt %d\r\n", i + 1);
+                /* printf("Failed to restore FLASH_INITED_FLAG on attempt %d\r\n", i + 1); */
                 continue;
             }
 
@@ -514,7 +514,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
             is25pl032_flash_normal_read(0, (uint8_t *)&init_flag, sizeof(init_flag));
             if (init_flag == FLASH_INITED_FLAG)
             {
-                printf("Successfully restored FLASH_INITED_FLAG on attempt %d\r\n", i + 1);
+                /* printf("Successfully restored FLASH_INITED_FLAG on attempt %d\r\n", i + 1); */
                 break;
             }
         }
@@ -527,7 +527,7 @@ int32_t is25pl032_flash_write_one_log(log_t *log)
 
     if (i == 3)
     {
-        printf("Failed to restore FLASH_INITED_FLAG after 3 attempts\r\n");
+        /* printf("Failed to restore FLASH_INITED_FLAG after 3 attempts\r\n"); */
         // Flash操作后重新启用传感器中断
         flash_control_sensor_interrupts(true);
         return -3;
@@ -590,7 +590,7 @@ int32_t is25pl032_flash_erase_sector(uint32_t address, uint32_t check_empty)
         vTaskDelay(1);
     }
     if (wren_reg == 0)
-        printf("Erasing flash 0x%08x timeout!\r\n", address);
+        /* printf("Erasing flash 0x%08x timeout!\r\n", address); */
 
     if (check_empty)
     {
@@ -612,7 +612,7 @@ int32_t is25pl032_flash_erase_sector(uint32_t address, uint32_t check_empty)
             {
                 if (rx_buffer[i] != 0xffffffff)
                 {
-                    printf("*****Erasing Flash Failed! Some units is not empty!*****\r\n");
+                    /* printf("*****Erasing Flash Failed! Some units is not empty!*****\r\n"); */
                     return -1;
                 }
             }
@@ -678,7 +678,7 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
     }
     if (timeout == 0)
     {
-        printf("flash_write_in_page 0x%08x timeout!\r\n", flash_address);
+        /* printf("flash_write_in_page 0x%08x timeout!\r\n", flash_address); */
         return -2;
     }
 
@@ -686,7 +686,7 @@ static int32_t is25pl032_flash_write_in_page(uint32_t flash_address, uint8_t *da
     is25pl032_flash_normal_read(flash_address, (uint8_t *)cmd_address_data, len);
     if (memcmp((uint8_t *)cmd_address_data, data, len) != 0)
     {
-        printf("flash_write_in_page 0x%08x failed! Data mismatch\r\n", flash_address);
+        /* printf("flash_write_in_page 0x%08x failed! Data mismatch\r\n", flash_address); */
         return -3;
     }
 
@@ -750,7 +750,7 @@ static int32_t is25pl032_flash_write_page(uint32_t flash_address, uint8_t *data,
     }
     if(timeout == 0)
     {
-        printf("Writing flash 0x%08x timeout!\r\n", flash_address - 256);
+        /* printf("Writing flash 0x%08x timeout!\r\n", flash_address - 256); */
         return -2;
     }
 
@@ -792,7 +792,7 @@ static int32_t is25pl032_flash_write_page(uint32_t flash_address, uint8_t *data,
         }
         if(timeout == 0)
         {
-            printf("Writing flash 0x%08x timeout!\r\n", flash_address - 256);
+            /* printf("Writing flash 0x%08x timeout!\r\n", flash_address - 256); */
             return -2;
         }
     }
@@ -973,7 +973,7 @@ int32_t is25pl032_flash_init(void)
     log_context_index = -1;
     dev_cfg_index = -1;
 
-    printf("FLASH ID: 0x%x\r\n", is25pl032_flash_read_id());
+    /* printf("FLASH ID: 0x%x\r\n", is25pl032_flash_read_id()); */
 
     // 检查FLASH是否已被初始化
     is25pl032_flash_normal_read(0, (uint8_t *)flash_temp_buffer, sizeof(flash_temp_buffer));
@@ -982,7 +982,7 @@ int32_t is25pl032_flash_init(void)
         // 擦除BLOCK
         for (int i = 0; i < 4 * 1024 * 24; i += 4 * 1024)
         {
-            printf("Erasing 0x%04x\r\n", i);
+            /* printf("Erasing 0x%04x\r\n", i); */
             is25pl032_flash_erase_sector(i, 0);
         }
 
@@ -1100,7 +1100,7 @@ int32_t is25pl032_flash_init(void)
         }
     }
 
-    printf("There are %d logs in flash.\r\n", log_context.log_to_be_read_count);
+    /* printf("There are %d logs in flash.\r\n", log_context.log_to_be_read_count); */
     return 0;
 }
 

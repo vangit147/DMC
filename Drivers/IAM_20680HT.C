@@ -95,7 +95,7 @@ static int32_t iam_20680ht_write_reg(uint8_t cs_num, uint32_t reg, uint32_t data
         rd_val = iam_20680ht_read_reg(cs_num, reg);
         if (rd_val != data)
         {
-            printf("IAM 20680HT: Write 0x%02x to reg(0x%02x) failed! reg_val:0x%02x\r\n", data, reg, rd_val);
+            /* printf("IAM 20680HT: Write 0x%02x to reg(0x%02x) failed! reg_val:0x%02x\r\n", data, reg, rd_val); */
             return -1;
         }
         // printf("IAM 20680HT: Write 0x%02x to reg(0x%02x) OK!\r\n", data, reg);
@@ -145,7 +145,7 @@ static void iam_20680ht_data_ready_isr_3(void)
   */
 static int32_t iam_20680ht_init(uint8_t cs_num)
 {
-    const char *info[2] = {"NOT ", ""};
+//    const char *info[2] = {"NOT ", ""};
     uint32_t found = 0;
     uint8_t reg_val;
 
@@ -162,7 +162,7 @@ static int32_t iam_20680ht_init(uint8_t cs_num)
     iam_20680ht_write_reg(cs_num, PWR_MGMT_1, 0X80, 0);
     vTaskDelay(1);
     reg_val = iam_20680ht_read_reg(cs_num, PWR_MGMT_1);
-    printf("IAM 20680HT: PWR_MGMT_1 = 0x%02x\r\n", reg_val);
+    //printf("IAM 20680HT: PWR_MGMT_1 = 0x%02x\r\n", reg_val);
     vTaskDelay(1);
 
     /*
@@ -178,7 +178,7 @@ static int32_t iam_20680ht_init(uint8_t cs_num)
         }
         vTaskDelay(1);
     }
-    printf("%sFound IAM_20680HT! ID=0x%02x\r\n", info[found], reg_val);
+    /* printf("%sFound IAM_20680HT! ID=0x%02x\r\n", info[found], reg_val); */
 
     /*
     Bit7:    -

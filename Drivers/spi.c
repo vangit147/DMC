@@ -356,9 +356,9 @@ int32_t spi0_init(void)
 
 //    ret = xTaskCreate(spi0_drv_task, "spi0_drv_task", 256, NULL, TASK_PRIORITY_SPI0_DRV, &spi0_drv_task_handle);
 //    if(ret == pdPASS)
-//        printf("Creating %s task OK...\r\n", "spi0_drv_task");
+//        //printf("Creating %s task OK...\r\n", "spi0_drv_task");
 //    else
-//        printf("Creating %s task failed! Cause code: %ld\r\n", "spi0_drv_task", ret);
+//        //printf("Creating %s task failed! Cause code: %ld\r\n", "spi0_drv_task", ret);
 
     lpspiCom0_MasterConfig0.callback = spi0_callback;
     INT_SYS_InstallHandler(LPSPI0_IRQn, LPSPI0_IRQHandler, 0);

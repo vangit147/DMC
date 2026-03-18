@@ -38,18 +38,17 @@ static uint8_t receiveMsg[RECEIVE_MSG_LEN];
 static uint8_t isSend;
 static uint8_t output_buffer[100];
 
+
 /******************************** Functions **********************************/
 /**
  * @brief  向可视化工具发送数据
  * @param  data: 要发送的数据缓冲区
  * @param  len: 数据长度
- * @note   通过LPUART1和LPUART2发送数据到可视化工具
+ * @note   通过LPUART0发送数据到可视化工具
  */
 static void send_data_to_vd_tool(void *data, uint32_t len)
 {
-    //    LPUART0_send(data, len);
-    LPUART1_send(data, len);
-    LPUART2_send(data, len);
+    LPUART0_send(data, len);
 }
 
 /**
@@ -70,7 +69,7 @@ static void send_data_to_vd_tool(void *data, uint32_t len)
  */
 static void uart_proc_received_msg(uint8_t *msg, uint32_t msg_len)
 {
-    printf("%s", msg);
+    /* printf("%s", msg); */
     // 消息长度至少为2个有效字节，且以回车结束。
     if (msg_len < 3 || msg[msg_len - 1] != '\r')
         //  goto error;

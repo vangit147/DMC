@@ -42,22 +42,22 @@ INIT_TASK_END_CPU1((void(*)(void*))0, "", 0, 0, 0, 0);
 static int do_start_task(uint32_t cpuid, const INIT_TASK *begin, const INIT_TASK *end)
 {
     BaseType_t      ret;
-#ifdef MULTI_CPU
-    const char* const cpu_str[] = {"[CPU0] ", "[CPU1] "};
-#else
-    const char* const cpu_str[] = {""};
-#endif
+//#ifdef MULTI_CPU
+//    const char* const cpu_str[] = {"[CPU0] ", "[CPU1] "};
+//#else
+//    const char* const cpu_str[] = {""};
+//#endif
     for(; begin < end; begin++)
     {
         //SEGGER_RTT_printf(0, "%sCreating %s ...\r\n", cpu_str[cpuid], begin->task_name);
-        printf("%sCreating %s ...\r\n", cpu_str[cpuid], begin->task_name);
+        /* printf("%sCreating %s ...\r\n", cpu_str[cpuid], begin->task_name); */
         ret = xTaskCreate(begin->task_fn, begin->task_name, begin->stack_depth, begin->param,
                           begin->task_prio, (TaskHandle_t*)(begin->handler));
-        if(ret != pdPASS)
-        {
-            //SEGGER_RTT_printf(0, "Creating %s task failed! Cause code: %ld\r\n", begin->task_name, ret);
-            printf("Creating %s task failed! Cause code: %ld\r\n", begin->task_name, ret);
-        }
+//        if(ret != pdPASS)
+//        {
+//            //SEGGER_RTT_printf(0, "Creating %s task failed! Cause code: %ld\r\n", begin->task_name, ret);
+//            /* printf("Creating %s task failed! Cause code: %ld\r\n", begin->task_name, ret); */
+//        }
     }
     return 0;
 }
@@ -105,7 +105,7 @@ static void init_task(void* p)
     for(; init_fn < &init_fn_end; init_fn++)
     {
         //SEGGER_RTT_printf(0, "Starting %s ...\r\n", init_fn->fn_name);
-        printf("Starting %s ...\r\n", init_fn->fn_name);
+        /* printf("Starting %s ...\r\n", init_fn->fn_name); */
         (*init_fn->fn)();
     }
     vTaskPrioritySet(xTaskGetCurrentTaskHandle(), ((uint32_t*)p)[1]);

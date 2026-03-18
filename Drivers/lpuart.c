@@ -26,15 +26,6 @@ static uint8_t              lpuart0_rx_buffer;
 static void (*lpuart0_tx_cb)(uint32_t uartHandle);
 static void (*lpuart0_rx_cb)(uint32_t uartHandle, uint32_t len);
 
-static uint8_t              lpuart1_tx_fifo[256];                     /*临时暂存区*/
-static uint8_t             *lpuart1_tx_fifo_wr_pos = lpuart1_tx_fifo;   /*写指针*/
-static uint32_t             lpuart1_tx_fifo_data_len;                 /*数据长度*/
-static uint8_t              lpuart1_tx_sending_buffer[TX_SENDING_BUFFER_LEN];            /*正在发送的缓冲区*/
-static uint32_t             lpuart1_tx_sending_data_len;              /*正在发送的数据长度*/
-static uint8_t              lpuart1_rx_buffer;
-static void (*lpuart1_tx_cb)(uint32_t uartHandle);
-static void (*lpuart1_rx_cb)(uint32_t uartHandle, uint32_t len);
-
 static uint8_t              lpuart2_init_flag;                          /**/
 static uint8_t              lpuart2_tx_fifo[256];                     /*临时暂存区*/
 static uint8_t             *lpuart2_tx_fifo_wr_pos = lpuart2_tx_fifo;   /*写指针*/
@@ -245,67 +236,6 @@ static void lpuart0_rx_callback(void *driverState, uart_event_t event, void *use
             break;
     }
 }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 23:00:48 Sunday
-  *******************************************************************************
-  */
-static void lpuart1_tx_callback(void *driverState, uart_event_t event, void *userData)
-{
-    switch(event)
-    {
-        case UART_EVENT_TX_EMPTY:
-            break;
-
-        case UART_EVENT_END_TRANSFER:
-            uart_general_TxCpltCallback(INST_LPUART1, lpuart1_tx_cb, lpuart1_tx_fifo, sizeof(lpuart1_tx_fifo),
-                                        &lpuart1_tx_fifo_data_len, lpuart1_tx_fifo_wr_pos,
-                                        lpuart1_tx_sending_buffer, sizeof(lpuart1_tx_sending_buffer), &lpuart1_tx_sending_data_len);
-            break;
-
-        default:
-            break;
-    }
-}
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 14:01:49 Sunday
-  *******************************************************************************
-  */
-static void lpuart1_rx_callback(void *driverState, uart_event_t event, void *userData)
-{
-    lpuart_state_t * lpuartState = (lpuart_state_t*)driverState;
-
-    switch(event)
-    {
-        case UART_EVENT_RX_FULL:
-            if(lpuart1_rx_cb)
-                lpuart1_rx_cb(INST_LPUART1, lpuart1_rx_buffer);
-            lpuartState->rxSize = 1;
-            lpuartState->rxBuff = &lpuart1_rx_buffer;
-            break;
-
-        case UART_EVENT_END_TRANSFER:
-        case UART_EVENT_ERROR:
-            LPUART_DRV_ReceiveData(INST_LPUART1, &lpuart1_rx_buffer, 1);
-            break;
-
-        default:
-            break;
-    }
-}
 
 /**
   *******************************************************************************
@@ -408,37 +338,7 @@ int32_t LPUART0_init(void (*tx_cb)(uint32_t), void (*rx_cb)(uint32_t, uint32_t))
 
     return 0;
 }
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
 
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 23:59:33 Sunday
-  *******************************************************************************
-  */
-int32_t LPUART1_init(void (*tx_cb)(uint32_t), void (*rx_cb)(uint32_t, uint32_t))
-{
-    lpuart1_tx_cb = tx_cb;
-    lpuart1_rx_cb = rx_cb;
-    LPUART_DRV_Init(INST_LPUART1, &lpuart1_State, &lpuart1_InitConfig0);
-    LPUART_DRV_InstallTxCallback(INST_LPUART1, lpuart1_tx_callback, 0);
-    LPUART_DRV_InstallRxCallback(INST_LPUART1, lpuart1_rx_callback, 0);
-    LPUART_DRV_ReceiveData(INST_LPUART1, &lpuart1_rx_buffer, 1);
-    if(lpuart1_InitConfig0.transferType == LPUART_USING_DMA)
-    {
-        INT_SYS_InstallHandler((IRQn_Type)lpuart1_InitConfig0.rxDMAChannel, get_DMA_IRQHandler(lpuart1_InitConfig0.rxDMAChannel), 0);
-        INT_SYS_SetPriority((IRQn_Type)lpuart1_InitConfig0.rxDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY);
-
-        INT_SYS_InstallHandler((IRQn_Type)lpuart1_InitConfig0.txDMAChannel, get_DMA_IRQHandler(lpuart1_InitConfig0.txDMAChannel), 0);
-        INT_SYS_SetPriority((IRQn_Type)lpuart1_InitConfig0.txDMAChannel, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY + 2);
-    }
-    INT_SYS_SetPriority(LPUART1_RxTx_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY);
-
-    return 0;
-}
 /**
   *******************************************************************************
   * @Description:
@@ -505,25 +405,6 @@ int32_t LPUART0_send(uint8_t* data, uint32_t len)
                               lpuart0_tx_fifo, sizeof(lpuart0_tx_fifo), &lpuart0_tx_fifo_data_len,
                               &lpuart0_tx_fifo_wr_pos, lpuart0_tx_sending_buffer,
                               sizeof(lpuart0_tx_sending_buffer), &lpuart0_tx_sending_data_len);
-}
-
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 23:09:22 Sunday
-  *******************************************************************************
-  */
-int32_t LPUART1_send(uint8_t* data, uint32_t len)
-{
-    return  uart_general_send(INST_LPUART1, data, len,
-                              lpuart1_tx_fifo, sizeof(lpuart1_tx_fifo), &lpuart1_tx_fifo_data_len,
-                              &lpuart1_tx_fifo_wr_pos, lpuart1_tx_sending_buffer,
-                              sizeof(lpuart1_tx_sending_buffer), &lpuart1_tx_sending_data_len);
 }
 
 /**

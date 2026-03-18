@@ -23,8 +23,7 @@
 #define EVENT_TIMER_100MS 0X1               // 100ms定时器事件 
 #define EVENT_UART2_RX 0X4                  // UART2接收事件 
 #define EVENT_UART2_TIMEOUT 0X08            // UART2超时事件 
-#define EVENT_UART1_RX 0X10                 // UART1接收事件 
-#define EVENT_SEND_DBG_DATA_TIMER 0X2       // 发送调试数据定时器事件 
+#define EVENT_HOST_RX 0X10                  // 上位机命令接收事件（来自 UART0）
 
 // 泥浆脉冲相关宏定义
 #define MUD_PULSE_PORT_LED              PTE
@@ -42,15 +41,9 @@ extern sensor_data_t sensor_data;    // 可直接引用访问传感器数据
 static TaskHandle_t main_task_handle;        // 主任务句柄 
 
 // 串口通信相关变量
-// UART1-调试/上位机通信端口
-static uint8_t UART1_rx_buffer[128];    // UART1接收缓冲区
-static uint32_t UART1_rx_data_len;      // UART1接收数据长度
-static TimerHandle_t lpuart1_rx_timer;  // UART1接收定时器句柄
-
-// UART2-井下通信/Modbus端口
-static uint8_t UART2_rx_buffer[128];    // UART2接收缓冲区
-static uint32_t UART2_rx_data_len;      // UART2接收数据长度
-static TimerHandle_t lpuart2_rx_timer;  // UART2接收定时器句柄
+// UART0-调试/上位机通信端口
+static uint8_t UART0_rx_buffer[80];    // UART0 上位机接收缓冲区
+static uint32_t UART0_rx_data_len;      // UART0 上位机接收数据长度
 
 // 陀螺仪数据统计变量
 static float gz_avg = 0;                 // Z轴角速度平均值 
@@ -101,18 +94,14 @@ void send_cutter_valve_test_pulse(uint8_t test_type);
 // 定时器中断处理函数
 static int32_t flextimer_mc1_isr(void);
 
-// 串口回调函数
-static void lpuart1_tx_cb(uint32_t uartHandle);
-static void lpuart1_rx_cb(uint32_t uartHandle, uint32_t data);
+// 串口回调函数（仅 UART2，UART0 在 main.c 中初始化并回调 main_task_uart0_rx_from_isr）
 static void lpuart2_tx_cb(uint32_t uartHandle);
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data);
 
-// 定时器回调函数
-static void lpuart2_rx_timer_cb(TimerHandle_t timer);
-
-// 事件处理函数
 static void on_100ms_timer_event(void);
-static void on_send_debug_data_event(void);
+
+/* UART0 接收字节从中断回调转发到主任务（供 main.c 中 lpuart0_rx_cb 调用） */
+void main_task_uart0_rx_from_isr(uint32_t data);
 
 // 主任务函数
 void main_task(void *pvParameters);
@@ -184,47 +173,22 @@ static int32_t flextimer_mc1_isr(void)
 }
 
 // ==================== 串口回调函数 ====================
+
 /**
   *******************************************************************************
-  * @Description: 串口1发送完成回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 22:07:08 Sunday
+  * @Description: UART0 接收字节处理（从中断回调转发），使用 UART0 自己的一套上位机命令缓冲和事件
   *******************************************************************************
   */
-static void lpuart1_tx_cb(uint32_t uartHandle)
+void main_task_uart0_rx_from_isr(uint32_t data)
 {
-}
-/**
-  *******************************************************************************
-  * @Description: 串口1接收回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 23:59:08 Sunday
-  *******************************************************************************
-  */
-static void lpuart1_rx_cb(uint32_t uartHandle, uint32_t data)
-{
-
-    if (data == '\n')  // 忽略换行符
+    if (data == '\n')
         return;
-    // Convert to Uppercase
-    if (data >= 'a' && data <= 'z')  // 转换为大写字母
+    if (data >= 'a' && data <= 'z')
         data -= 32;
-    if (UART1_rx_data_len < sizeof(UART1_rx_buffer)) // 检查缓冲区大小
-        UART1_rx_buffer[UART1_rx_data_len++] = (uint8_t)data;
-    if ((data == '\r' || UART1_rx_data_len >= sizeof(UART1_rx_buffer)) && main_task_handle) //接收到回车符或者缓冲区已满，通知主任务处理
-        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART1_RX, eSetBits, NULL, NULL);
-    else if (lpuart1_rx_timer)
-    {
-        // xTimerChangePeriodFromISR(lpuart1_rx_timer, 50, 0);
-    }
+    if (UART0_rx_data_len < sizeof(UART0_rx_buffer))
+        UART0_rx_buffer[UART0_rx_data_len++] = (uint8_t)data;
+    if ((data == '\r' || UART0_rx_data_len >= sizeof(UART0_rx_buffer)) && main_task_handle)
+        xTaskGenericNotifyFromISR(main_task_handle, EVENT_HOST_RX, eSetBits, NULL, NULL);
 }
 /**
   *******************************************************************************
@@ -245,12 +209,6 @@ static void lpuart2_tx_cb(uint32_t uartHandle)
   */
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data)
 {
-    if (UART2_rx_data_len < sizeof(UART2_rx_buffer))
-        UART2_rx_buffer[UART2_rx_data_len++] = (uint8_t)data;
-    if (UART2_rx_data_len >= sizeof(UART2_rx_buffer))
-        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART2_RX, eSetBits, NULL, NULL);
-    else
-        xTimerChangePeriodFromISR(lpuart2_rx_timer, 10, 0);
 }
 /**
   *******************************************************************************
@@ -268,21 +226,6 @@ static void timer_100ms_cb(TimerHandle_t xTimer)
     xTaskGenericNotify(main_task_handle, EVENT_TIMER_100MS, eSetBits, NULL);
 }
 // ==================== 定时器回调函数 ====================
-/**
-  *******************************************************************************
-  * @Description: 发送调试数据定时器回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.22 23:30:32 Thursday
-  *******************************************************************************
-  */
-static void timer_send_dbg_data_cb(TimerHandle_t xTimer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_SEND_DBG_DATA_TIMER, eSetBits, NULL);
-}
 
 /**
   *******************************************************************************
@@ -298,36 +241,6 @@ static void timer_send_dbg_data_cb(TimerHandle_t xTimer)
 static void timer_waiting_for_uart2_timeout_cb(TimerHandle_t xTimer)
 {
     xTaskGenericNotify(main_task_handle, EVENT_UART2_TIMEOUT, eSetBits, NULL);
-}
-/**
-  *******************************************************************************
-  * @Description: 串口1接收超时定时器回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2023.12.01 22:21:29 Friday
-  *******************************************************************************
-  */
-static void timer_lpuart1_rx_cb(TimerHandle_t timer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_UART1_RX, eSetBits, NULL);
-}
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NY
-  * @CreatedDate: 2024.08.03 12:05:55 Saturday
-  *******************************************************************************
-  */
-static void lpuart2_rx_timer_cb(TimerHandle_t timer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_UART2_RX, eSetBits, NULL);
 }
 
 // ==================== 泥浆脉冲相关函数 ====================
@@ -377,12 +290,6 @@ static void update_mud_pulser_state(void)
     }
 
     PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulser_curr_tx_index & 0x1);
-    uint8_t temp_data[200];
-    uint32_t timestamp = xTaskGetTickCount();
-    memset(temp_data, 0xFF, sizeof(temp_data));
-    int n = sprintf((char*)temp_data,"MUD_PULSE_PORT:%d %d\r\n",
-                    pulser_curr_tx_index & 0x1,timestamp);
-    LPUART2_send(temp_data, n);
 }
 
 /**
@@ -423,7 +330,6 @@ static int32_t pulser_start_tx(int32_t * data, uint32_t len)
   */
 static int32_t init_on_chip_peripheral(void)
 {
-    LPUART1_init(lpuart1_tx_cb, lpuart1_rx_cb);    // 初始化LPUART1，设置发送和接收回调函数
     LPUART2_init(lpuart2_tx_cb, lpuart2_rx_cb);    // 初始化LPUART2，设置发送和接收回调函数
 
     i2c_init();                                     // 初始化I2C接口
@@ -469,44 +375,6 @@ static int32_t init_on_board_peripheral(void)
 }
 
 // ==================== 事件处理函数 ====================
-/**
-  *******************************************************************************
-  * @Description: 发送调试数据
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.22 22:23:37 Thursday
-  *******************************************************************************
-  */
-static void on_send_debug_data_event(void)
-{
-#if 0
-    // 调试数据相关局部变量 25/08/31 Gordon
-    uint32_t tail_flag = 0x7f800000;        // 调试数据尾部标识 25/08/31 Gordon
-    float debug_data[20];                    // 调试数据数组 25/08/31 Gordon
-    int32_t  counter = 0;                    // 数据计数器 25/08/31 Gordon
-
-    //debug_data[counter + 6] = ads1278_get_raw_acc_gyro_temp(&debug_data[counter + 0], &debug_data[counter + 1],
-    //    &debug_data[counter + 2], &debug_data[counter + 3], &debug_data[counter + 4], &debug_data[counter + 5]);
-    //counter += 7;
-
-    debug_data[counter + 6] = iam_20680ht_get_raw_acc_gyro_temp(&debug_data[counter + 0], &debug_data[counter + 1],
-                              &debug_data[counter + 2], &debug_data[counter + 3], &debug_data[counter + 4], &debug_data[counter + 5]);
-    counter += 7;
-
-    // 使用全局变量inc_hs_data
-    extern inclination_hs_t inc_hs_data;
-    debug_data[counter + 0] = inc_hs_data.inc1;
-    debug_data[counter + 1] = inc_hs_data.inc2;
-    debug_data[counter + 2] = inc_hs_data.inc3;
-    counter += 3;
-
-    LPUART1_send((uint8_t*)debug_data, counter << 2);
-    LPUART1_send((uint8_t*)&tail_flag, 4);
-#endif
-}
 
 /**
   *******************************************************************************
@@ -524,7 +392,6 @@ static void on_100ms_timer_event(void)
     // RTC相关静态变量 25/08/31 Gordon
     static uint32_t device_usage_time = 0;   // 设备运行时间计数器
     static uint32_t log_period = 0;         // 日志记录周期计数器，当其递增到algorithm_setting.log_period_time时，记录一条日志
-    static uint32_t time_count = 0;
 
     gz_avg += sensor_data.gz_dps;
     avg_count++;
@@ -653,30 +520,6 @@ static void on_100ms_timer_event(void)
         accumulate_pump_off_inc();
     }
     previous_pumping = pumping;
-    // 打印振动状态（IAM20680）、钻进状态、旋转状态、开泵状态、Z轴陀螺仪数据、泥浆脉冲定时器计数、静态井斜、动态井斜、实时温度、实时高边和实时电池电压
-    uint8_t temp_data[200];
-    memset(temp_data, 0xFF, sizeof(temp_data));
-    inclination_hs_t hs;
-    get_inc_hs(&hs);
-    // drilling 由 rotating||vibrating 推导，与 log.flag 逻辑一致，避免竞态导致 DRILL:1 但 ROTATE:0 VIB:0 的矛盾输出
-    int n = sprintf((char*)temp_data,"VIB:%d DRILL:%d ROTATE:%d PUMP:%d GZ_DPS:%f mud_pulse_timer_counter:%d mud_pulse_timer_counter_for_static_data=%d pump_off_real_inc=%f,pump_on_inc=%f,sensor_data.t_C=%f,hs.hs_lpf=%f,vSupply=%f\r\n",
-                    algorithm_data.vibrating ? 1 : 0,
-                    (algorithm_data.rotating || algorithm_data.vibrating) ? 1 : 0,
-                    algorithm_data.rotating ? 1 : 0,
-                    pumping ? 1 : 0,
-                    sensor_data.gz_dps,
-                    mud_pulse_timer_counter,
-                    mud_pulse_timer_counter_for_static_data,
-                    fabs(pump_off_real_inc) > 8.0f ? 8.0f : pump_off_real_inc,
-                    fabs(inc_hs_data.good_inc) > 8.0f ? 8.0f : fabs(inc_hs_data.good_inc),
-                    sensor_data.t_C,
-                    hs.hs_lpf,
-                    vSupply);
-    time_count++;
-    if(time_count==10){
-        time_count = 0;
-        LPUART2_send(temp_data, n);
-    }
 }
 
 /**
@@ -761,7 +604,6 @@ void accumulate_pump_off_inc(void)
 void record_log_to_flash(void)
 {
     // 日志记录相关局部变量
-    int32_t ret;
     log_t log = {0};
     uint32_t timestamp;
     uint8_t rtc_data[8];
@@ -869,8 +711,7 @@ void record_log_to_flash(void)
     avg_count = 0;
 
     // 写入日志到Flash，返回值：0-成功，-1-日志写入失败，-2-日志上下文更新失败，-3-FLASH_INITED_FLAG恢复失败
-    if ((ret = is25pl032_flash_write_one_log(&log)) != 0)
-        printf("Writing ONE log failed! ret=%d\r\n", ret);
+    is25pl032_flash_write_one_log(&log);
 }
 
 
@@ -1010,9 +851,6 @@ void main_task(void *p)
     main_task_handle = xTaskGetCurrentTaskHandle();
     uint32_t start_ticket = xTaskGetTickCount();
 
-    lpuart1_rx_timer = xTimerCreate("lpuart_rx_timer", 10, 0, 0, timer_lpuart1_rx_cb);
-    lpuart2_rx_timer = xTimerCreate("lpuart2_rx_timer", 10, 0, 0, lpuart2_rx_timer_cb);
-
     init_on_board_peripheral();
 
     // 加载配置
@@ -1061,24 +899,15 @@ void main_task(void *p)
 
         if (notify & EVENT_UART2_RX)
         {
-            if (waiting_for_uart2_timeout_tmr)
-            {
-                xTimerDelete(waiting_for_uart2_timeout_tmr, 0);
-                waiting_for_uart2_timeout_tmr = 0;
-            }
-
-            handle_uart_msg(UART2_rx_buffer, &UART2_rx_data_len);
         }
 
         if (notify & EVENT_TIMER_100MS)
         {
             PCA8565_on_timer_event();
         }
-        if (notify & EVENT_UART1_RX)
-            handle_uart_msg(UART1_rx_buffer, &UART1_rx_data_len);
+        if (notify & EVENT_HOST_RX)
+            handle_uart_msg(UART0_rx_buffer, &UART0_rx_data_len);
     }
-
-    xTimerStart(xTimerCreate("timer_send_dbg_data_cb", 100, 1, 0, timer_send_dbg_data_cb), 1000);
 
     // 初始化泥浆脉冲，执行双脉冲阶段设置传输
     pulser_tx_buffer_len = 0;
@@ -1091,7 +920,7 @@ void main_task(void *p)
     pulser_start_tx(pulser_tx_buffer, pulser_tx_buffer_len);
 
     // Enter main loop（井下模式）
-    printf("Enter main loop!\r\n");
+    /* printf("Enter main loop!\r\n"); */
     for (;;)
     {
         uint32_t notify;
@@ -1100,10 +929,6 @@ void main_task(void *p)
         if (notify & EVENT_TIMER_100MS)
             on_100ms_timer_event();
 
-        if (notify & EVENT_SEND_DBG_DATA_TIMER)
-        {
-            on_send_debug_data_event();
-        }
     }
 }
 
