@@ -1271,7 +1271,9 @@ static void update_drilling_status(void)
 
     // 只有历史记录满了才开始判断
     if (!drilling_history_full) {
-        algorithm_data.drilling = false;  // 历史记录未满，设为静态
+        algorithm_data.drilling = false;   // 历史记录未满，设为静态
+        algorithm_data.rotating = false;
+        algorithm_data.vibrating = false;
         return;
     }
 
@@ -1301,8 +1303,9 @@ static void update_drilling_status(void)
     bool is_vibrating = (vibration_count >= 8);
     bool is_not_vibrating = (no_vibration_count >= 10);  // 所有10秒都不振动
 
-    // 更新旋转状态（直接保存，供其他任务调用）
+    // 更新旋转状态和振动状态（直接保存，供其他任务调用）
     algorithm_data.rotating = is_rotating;
+    algorithm_data.vibrating = is_vibrating;
 
     // ==================== 钻进状态判断逻辑 ====================
     // 基于滞后机制：进入宽松，退出严格，避免频繁切换
