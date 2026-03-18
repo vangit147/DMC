@@ -750,6 +750,11 @@
               <FileType>1</FileType>
               <FilePath>..\App\signal_process.c</FilePath>
             </File>
+            <File>
+              <FileName>north_seeking_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\App\north_seeking_protocol.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -846,5 +851,14 @@
     <components/>
     <files/>
   </RTE>
+
+  <LayerInfo>
+    <Layers>
+      <Layer>
+        <LayName>inclinometer_dynamic</LayName>
+        <LayPrjMark>1</LayPrjMark>
+      </Layer>
+    </Layers>
+  </LayerInfo>
 
 </Project>

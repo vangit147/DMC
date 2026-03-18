@@ -45,6 +45,13 @@ static TaskHandle_t main_task_handle;        // 主任务句柄
 static uint8_t UART0_rx_buffer[80];    // UART0 上位机接收缓冲区
 static uint32_t UART0_rx_data_len;      // UART0 上位机接收数据长度
 
+// UART2-寻北仪专用（井上/井下均只收寻北仪数据，不处理上位机指令）
+// 使用环形缓冲区在中断中累积寻北仪数据，主任务从环形缓冲区取字节组帧解析
+#define NS_RX_RING_SIZE 192   // 寻北仪每帧96字节，200Hz；192可缓存多帧且避免内存溢出
+static uint8_t  ns_rx_ring[NS_RX_RING_SIZE];
+static uint16_t ns_rx_head = 0;  // ISR 写入位置
+static uint16_t ns_rx_tail = 0;  // 主任务读取位置
+
 // 陀螺仪数据统计变量
 static float gz_avg = 0;                 // Z轴角速度平均值 
 static uint32_t avg_count = 0;           // 角速度采样计数 
@@ -97,6 +104,8 @@ static int32_t flextimer_mc1_isr(void);
 // 串口回调函数（仅 UART2，UART0 在 main.c 中初始化并回调 main_task_uart0_rx_from_isr）
 static void lpuart2_tx_cb(uint32_t uartHandle);
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data);
+/** 从 UART2 环形缓冲区取数并解析寻北仪帧，井上/井下共用，不处理上位机指令 */
+static void process_uart2_north_seeking_rx(void);
 
 static void on_100ms_timer_event(void);
 
@@ -209,7 +218,52 @@ static void lpuart2_tx_cb(uint32_t uartHandle)
   */
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data)
 {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    uint16_t next_head = (uint16_t)((ns_rx_head + 1U) % NS_RX_RING_SIZE);
+    if (next_head != ns_rx_tail)
+    {
+        /* 有空间时写入一个字节到环形缓冲区 */
+        ns_rx_ring[ns_rx_head] = (uint8_t)data;
+        ns_rx_head = next_head;
+    }
+    else
+    {
+        /* 环形缓冲区满：当前简单丢弃新字节 */
+    }
+
+    /* 使用“环内有效字节数”作为唤醒条件：只要累积到至少 1 帧（96 字节）就唤醒主任务 */
+    uint16_t used = (uint16_t)((ns_rx_head + NS_RX_RING_SIZE - ns_rx_tail) % NS_RX_RING_SIZE);
+    if (used >= 96U)
+    {
+        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART2_RX, eSetBits, NULL, &xHigherPriorityTaskWoken);
+    }
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
+/** 从 ns_rx_ring 取字节、组帧并调用寻北仪解析；仅处理寻北仪数据，不处理上位机指令 */
+static void process_uart2_north_seeking_rx(void)
+{
+    static uint8_t acc_buf[192];
+    static uint32_t acc_len = 0;
+
+    taskENTER_CRITICAL();
+    while (ns_rx_tail != ns_rx_head && acc_len < sizeof(acc_buf))
+    {
+        acc_buf[acc_len++] = ns_rx_ring[ns_rx_tail];
+        ns_rx_tail = (uint16_t)((ns_rx_tail + 1U) % NS_RX_RING_SIZE);
+    }
+    taskEXIT_CRITICAL();
+
+    if (acc_len >= 2U)
+    {
+        uint32_t len = acc_len;
+        north_seeking_handle_rx(acc_buf, &len);
+        acc_len = len;
+    }
+}
+
 /**
   *******************************************************************************
   * @Description: 100ms定时器回调函数
@@ -897,9 +951,9 @@ void main_task(void *p)
             break; // 20秒后退出等待循环，进入井下模式
         }
 
+        /* 地面模式：UART2 仅处理寻北仪数据 */
         if (notify & EVENT_UART2_RX)
-        {
-        }
+            process_uart2_north_seeking_rx();
 
         if (notify & EVENT_TIMER_100MS)
         {
@@ -929,6 +983,9 @@ void main_task(void *p)
         if (notify & EVENT_TIMER_100MS)
             on_100ms_timer_event();
 
+        /* 井下：UART2 仅处理寻北仪数据 */
+        if (notify & EVENT_UART2_RX)
+            process_uart2_north_seeking_rx();
     }
 }
 

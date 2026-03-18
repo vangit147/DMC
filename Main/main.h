@@ -50,6 +50,7 @@ extern "C" {
 #include "uart_service.h"
 #include "main_task.h"
 #include "ie_task.h"
+#include "north_seeking_protocol.h"
 
 #include "common.h"
 #include "quick_sort.h"

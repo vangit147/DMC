@@ -36,7 +36,7 @@ extern float vSupply;
 #define RECEIVE_MSG_LEN 120
 static uint8_t receiveMsg[RECEIVE_MSG_LEN];
 static uint8_t isSend;
-static uint8_t output_buffer[100];
+static uint8_t output_buffer[110];  /* 需容纳 NS=? 的 5+96+3=104 字节 */
 
 
 /******************************** Functions **********************************/
@@ -66,6 +66,8 @@ static void send_data_to_vd_tool(void *data, uint32_t len)
  *         8. KP= - 设置偏移量
  *         9. UX= - 设置参数
  *         10. AXB/GXB等 - 设置多项式拟合系数
+ *         11. NS=? - 寻北数据查询，回复一帧 96 字节 MG-01 寻北数据
+ *         12. NSL=经度,纬度 - 寻北装订（文本），例 NSL=120.5,30.2；另有 32 字节二进制装订（55 AA 24...）
  */
 static void uart_proc_received_msg(uint8_t *msg, uint32_t msg_len)
 {
@@ -1119,6 +1121,45 @@ void send_msg(void)
         send_cutter_valve_test_pulse(test_type);
 
         // 直接返回成功响应
+        isSend = 0;
+        goto ok;
+    }
+
+    /* ========== 寻北仪相关指令（与上位机指令式交互） ========== */
+    /* NS=? : 查询一帧寻北数据，发送来自寻北仪的 96 字节；若尚未收到则发送全 0；带标识符 0x1B 头尾 */
+    if (receiveMsg[0] == 'N' && receiveMsg[1] == 'S' && receiveMsg[2] == '=' && receiveMsg[3] == '?')
+    {
+        uint8_t flag = 0x1B;  /* 寻北数据查询命令标识（0x1A 为 CHS=?） */
+        north_seeking_get_rx_frame(output_buffer + 5);  /* 96 字节写入 offset 5 */
+        output_buffer[0] = 0x55;
+        output_buffer[1] = flag;
+        output_buffer[2] = 0x54;
+        output_buffer[3] = 104 >> 16 & 0xff;  /* 发送总长度 104 字节的高字节 */
+        output_buffer[4] = 104 & 0xff;        /* 发送总长度 104 字节的低字节 */
+        output_buffer[101] = 0x54;
+        output_buffer[102] = flag;
+        output_buffer[103] = 0x55;
+        send_data_to_vd_tool(output_buffer, 104);
+        isSend = 0;
+    }
+    /* NSL=经度,纬度 : 文本方式装订寻北经度、纬度（单位：度），例 NSL=120.5,30.2 */
+    if (receiveMsg[0] == 'N' && receiveMsg[1] == 'S' && receiveMsg[2] == 'L' && receiveMsg[3] == '=')
+    {
+        char *p = (char *)&receiveMsg[4];
+        char part1[32];
+        char part2[32];
+        uint8_t i = 0;
+        for (; i < sizeof(part1) - 1 && *p && *p != ','; i++)
+            part1[i] = *p++;
+        part1[i] = '\0';
+        if (*p == ',')
+            p++;
+        i = 0;
+        for (; i < sizeof(part2) - 1 && *p && *p != '\0'; i++)
+            part2[i] = *p++;
+        part2[i] = '\0';
+        if (part1[0] != '\0' && part2[0] != '\0')
+            north_seeking_send_compass_command(atof(part1), atof(part2));  /* 经 LPUART2_send_internal 发装订指令给寻北模组 */
         isSend = 0;
         goto ok;
     }
