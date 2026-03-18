@@ -23,8 +23,7 @@
 #define EVENT_TIMER_100MS 0X1               // 100ms定时器事件 
 #define EVENT_UART2_RX 0X4                  // UART2接收事件 
 #define EVENT_UART2_TIMEOUT 0X08            // UART2超时事件 
-#define EVENT_UART1_RX 0X10                 // UART1接收事件 
-#define EVENT_SEND_DBG_DATA_TIMER 0X2       // 发送调试数据定时器事件 
+#define EVENT_HOST_RX 0X10                  // 上位机命令接收事件（来自 UART0）
 
 // 泥浆脉冲相关宏定义
 #define MUD_PULSE_PORT_LED              PTE
@@ -42,15 +41,16 @@ extern sensor_data_t sensor_data;    // 可直接引用访问传感器数据
 static TaskHandle_t main_task_handle;        // 主任务句柄 
 
 // 串口通信相关变量
-// UART1-调试/上位机通信端口
-static uint8_t UART1_rx_buffer[128];    // UART1接收缓冲区
-static uint32_t UART1_rx_data_len;      // UART1接收数据长度
-static TimerHandle_t lpuart1_rx_timer;  // UART1接收定时器句柄
+// UART0-调试/上位机通信端口
+static uint8_t UART0_rx_buffer[80];    // UART0 上位机接收缓冲区
+static uint32_t UART0_rx_data_len;      // UART0 上位机接收数据长度
 
-// UART2-井下通信/Modbus端口
-static uint8_t UART2_rx_buffer[128];    // UART2接收缓冲区
-static uint32_t UART2_rx_data_len;      // UART2接收数据长度
-static TimerHandle_t lpuart2_rx_timer;  // UART2接收定时器句柄
+// UART2-寻北仪专用（井上/井下均只收寻北仪数据，不处理上位机指令）
+// 使用环形缓冲区在中断中累积寻北仪数据，主任务从环形缓冲区取字节组帧解析
+#define NS_RX_RING_SIZE 192   // 寻北仪每帧96字节，200Hz；192可缓存多帧且避免内存溢出
+static uint8_t  ns_rx_ring[NS_RX_RING_SIZE];
+static uint16_t ns_rx_head = 0;  // ISR 写入位置
+static uint16_t ns_rx_tail = 0;  // 主任务读取位置
 
 // 陀螺仪数据统计变量
 static float gz_avg = 0;                 // Z轴角速度平均值 
@@ -59,10 +59,9 @@ static uint32_t avg_count = 0;           // 角速度采样计数
 // 设备状态相关变量
 // 井下状态相关变量：开机20秒后uart1端口无通信则进入井下模式
 int8_t downhole;                  // 井下状态标志 1:井下（记录日志，不响应上位机通信），0:地面（响应上位机通信，不记录日志）
-float vSupply;                  // ADC0_SE2 PTA6 36V电源电压监测值
+float vSupply;                  // ADC1_SE4 PTC6 36V电源电压监测值
 static bool pumping = false;            // 开泵状态:1.开泵中，0.停泵中
 static bool previous_pumping = false;   // 前一状态开泵状态:1.开泵中，0.停泵中
-static uint8_t current_vibration_status = 0;  // 当前振动状态，从on_100ms_timer_event中的局部变量赋值
 
 // 静态井斜相关变量
 float pump_off_inc = -1;                // 静态井斜，停泵状态下的静态井斜 -1表示没有有效静止井斜
@@ -99,24 +98,19 @@ static int32_t pulser_start_tx(int32_t * data, uint32_t len);
 static void prepare_data_transmission(int type);
 void send_cutter_valve_test_pulse(uint8_t test_type);
 
-// 振动状态检测函数
-static uint8_t check_gpio_vibration(void);
-
 // 定时器中断处理函数
 static int32_t flextimer_mc1_isr(void);
 
-// 串口回调函数
-static void lpuart1_tx_cb(uint32_t uartHandle);
-static void lpuart1_rx_cb(uint32_t uartHandle, uint32_t data);
+// 串口回调函数（仅 UART2，UART0 在 main.c 中初始化并回调 main_task_uart0_rx_from_isr）
 static void lpuart2_tx_cb(uint32_t uartHandle);
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data);
+/** 从 UART2 环形缓冲区取数并解析寻北仪帧，井上/井下共用，不处理上位机指令 */
+static void process_uart2_north_seeking_rx(void);
 
-// 定时器回调函数
-static void lpuart2_rx_timer_cb(TimerHandle_t timer);
-
-// 事件处理函数
 static void on_100ms_timer_event(void);
-static void on_send_debug_data_event(void);
+
+/* UART0 接收字节从中断回调转发到主任务（供 main.c 中 lpuart0_rx_cb 调用） */
+void main_task_uart0_rx_from_isr(uint32_t data);
 
 // 主任务函数
 void main_task(void *pvParameters);
@@ -147,8 +141,8 @@ void start_and_get_adc_result(void)
     ADC_DRV_WaitConvDone(INST_ADCONV1);//等待转换完成
     ADC_DRV_GetChanResult(INST_ADCONV1, 0, &u16_ADC_raw_result);//获取转换结果
 
-    // 电压缩放系数:21
-    vSupply = (float)u16_ADC_raw_result * 3.300f * 21.0f / 4096.0f;
+    // 电压缩放系数:11
+    vSupply = (float)u16_ADC_raw_result * 3.300f * 11.0f / 4096.0f;
 }
 
 /**
@@ -188,47 +182,22 @@ static int32_t flextimer_mc1_isr(void)
 }
 
 // ==================== 串口回调函数 ====================
+
 /**
   *******************************************************************************
-  * @Description: 串口1发送完成回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 22:07:08 Sunday
+  * @Description: UART0 接收字节处理（从中断回调转发），使用 UART0 自己的一套上位机命令缓冲和事件
   *******************************************************************************
   */
-static void lpuart1_tx_cb(uint32_t uartHandle)
+void main_task_uart0_rx_from_isr(uint32_t data)
 {
-}
-/**
-  *******************************************************************************
-  * @Description: 串口1接收回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : YangHaifeng
-  * @CreatedDate: 2023.09.24 23:59:08 Sunday
-  *******************************************************************************
-  */
-static void lpuart1_rx_cb(uint32_t uartHandle, uint32_t data)
-{
-
-    if (data == '\n')  // 忽略换行符
+    if (data == '\n')
         return;
-    // Convert to Uppercase
-    if (data >= 'a' && data <= 'z')  // 转换为大写字母
+    if (data >= 'a' && data <= 'z')
         data -= 32;
-    if (UART1_rx_data_len < sizeof(UART1_rx_buffer)) // 检查缓冲区大小
-        UART1_rx_buffer[UART1_rx_data_len++] = (uint8_t)data;
-    if ((data == '\r' || UART1_rx_data_len >= sizeof(UART1_rx_buffer)) && main_task_handle) //接收到回车符或者缓冲区已满，通知主任务处理
-        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART1_RX, eSetBits, NULL, NULL);
-    else if (lpuart1_rx_timer)
-    {
-        // xTimerChangePeriodFromISR(lpuart1_rx_timer, 50, 0);
-    }
+    if (UART0_rx_data_len < sizeof(UART0_rx_buffer))
+        UART0_rx_buffer[UART0_rx_data_len++] = (uint8_t)data;
+    if ((data == '\r' || UART0_rx_data_len >= sizeof(UART0_rx_buffer)) && main_task_handle)
+        xTaskGenericNotifyFromISR(main_task_handle, EVENT_HOST_RX, eSetBits, NULL, NULL);
 }
 /**
   *******************************************************************************
@@ -249,13 +218,52 @@ static void lpuart2_tx_cb(uint32_t uartHandle)
   */
 static void lpuart2_rx_cb(uint32_t uartHandle, uint32_t data)
 {
-    if (UART2_rx_data_len < sizeof(UART2_rx_buffer))
-        UART2_rx_buffer[UART2_rx_data_len++] = (uint8_t)data;
-    if (UART2_rx_data_len >= sizeof(UART2_rx_buffer))
-        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART2_RX, eSetBits, NULL, NULL);
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    uint16_t next_head = (uint16_t)((ns_rx_head + 1U) % NS_RX_RING_SIZE);
+    if (next_head != ns_rx_tail)
+    {
+        /* 有空间时写入一个字节到环形缓冲区 */
+        ns_rx_ring[ns_rx_head] = (uint8_t)data;
+        ns_rx_head = next_head;
+    }
     else
-        xTimerChangePeriodFromISR(lpuart2_rx_timer, 10, 0);
+    {
+        /* 环形缓冲区满：当前简单丢弃新字节 */
+    }
+
+    /* 使用“环内有效字节数”作为唤醒条件：只要累积到至少 1 帧（96 字节）就唤醒主任务 */
+    uint16_t used = (uint16_t)((ns_rx_head + NS_RX_RING_SIZE - ns_rx_tail) % NS_RX_RING_SIZE);
+    if (used >= 96U)
+    {
+        xTaskGenericNotifyFromISR(main_task_handle, EVENT_UART2_RX, eSetBits, NULL, &xHigherPriorityTaskWoken);
+    }
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
+/** 从 ns_rx_ring 取字节、组帧并调用寻北仪解析；仅处理寻北仪数据，不处理上位机指令 */
+static void process_uart2_north_seeking_rx(void)
+{
+    static uint8_t acc_buf[192];
+    static uint32_t acc_len = 0;
+
+    taskENTER_CRITICAL();
+    while (ns_rx_tail != ns_rx_head && acc_len < sizeof(acc_buf))
+    {
+        acc_buf[acc_len++] = ns_rx_ring[ns_rx_tail];
+        ns_rx_tail = (uint16_t)((ns_rx_tail + 1U) % NS_RX_RING_SIZE);
+    }
+    taskEXIT_CRITICAL();
+
+    if (acc_len >= 2U)
+    {
+        uint32_t len = acc_len;
+        north_seeking_handle_rx(acc_buf, &len);
+        acc_len = len;
+    }
+}
+
 /**
   *******************************************************************************
   * @Description: 100ms定时器回调函数
@@ -272,21 +280,6 @@ static void timer_100ms_cb(TimerHandle_t xTimer)
     xTaskGenericNotify(main_task_handle, EVENT_TIMER_100MS, eSetBits, NULL);
 }
 // ==================== 定时器回调函数 ====================
-/**
-  *******************************************************************************
-  * @Description: 发送调试数据定时器回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.22 23:30:32 Thursday
-  *******************************************************************************
-  */
-static void timer_send_dbg_data_cb(TimerHandle_t xTimer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_SEND_DBG_DATA_TIMER, eSetBits, NULL);
-}
 
 /**
   *******************************************************************************
@@ -302,36 +295,6 @@ static void timer_send_dbg_data_cb(TimerHandle_t xTimer)
 static void timer_waiting_for_uart2_timeout_cb(TimerHandle_t xTimer)
 {
     xTaskGenericNotify(main_task_handle, EVENT_UART2_TIMEOUT, eSetBits, NULL);
-}
-/**
-  *******************************************************************************
-  * @Description: 串口1接收超时定时器回调函数
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2023.12.01 22:21:29 Friday
-  *******************************************************************************
-  */
-static void timer_lpuart1_rx_cb(TimerHandle_t timer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_UART1_RX, eSetBits, NULL);
-}
-/**
-  *******************************************************************************
-  * @Description:
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NY
-  * @CreatedDate: 2024.08.03 12:05:55 Saturday
-  *******************************************************************************
-  */
-static void lpuart2_rx_timer_cb(TimerHandle_t timer)
-{
-    xTaskGenericNotify(main_task_handle, EVENT_UART2_RX, eSetBits, NULL);
 }
 
 // ==================== 泥浆脉冲相关函数 ====================
@@ -381,12 +344,6 @@ static void update_mud_pulser_state(void)
     }
 
     PINS_DRV_WritePin(MUD_PULSE_PORT, MUD_PULSE_PIN, pulser_curr_tx_index & 0x1);
-    uint8_t temp_data[200];
-    uint32_t timestamp = xTaskGetTickCount();
-    memset(temp_data, 0xFF, sizeof(temp_data));
-    int n = sprintf((char*)temp_data,"MUD_PULSE_PORT:%d %d\r\n",
-                    pulser_curr_tx_index & 0x1,timestamp);
-    LPUART2_send(temp_data, n);
 }
 
 /**
@@ -427,7 +384,6 @@ static int32_t pulser_start_tx(int32_t * data, uint32_t len)
   */
 static int32_t init_on_chip_peripheral(void)
 {
-    LPUART1_init(lpuart1_tx_cb, lpuart1_rx_cb);    // 初始化LPUART1，设置发送和接收回调函数
     LPUART2_init(lpuart2_tx_cb, lpuart2_rx_cb);    // 初始化LPUART2，设置发送和接收回调函数
 
     i2c_init();                                     // 初始化I2C接口
@@ -473,44 +429,6 @@ static int32_t init_on_board_peripheral(void)
 }
 
 // ==================== 事件处理函数 ====================
-/**
-  *******************************************************************************
-  * @Description: 发送调试数据
-  * @Parameters :
-  * @RetValue   :
-  * @Note       :
-
-  * @CreatedBy  : NickYang
-  * @CreatedDate: 2024.02.22 22:23:37 Thursday
-  *******************************************************************************
-  */
-static void on_send_debug_data_event(void)
-{
-#if 0
-    // 调试数据相关局部变量 25/08/31 Gordon
-    uint32_t tail_flag = 0x7f800000;        // 调试数据尾部标识 25/08/31 Gordon
-    float debug_data[20];                    // 调试数据数组 25/08/31 Gordon
-    int32_t  counter = 0;                    // 数据计数器 25/08/31 Gordon
-
-    //debug_data[counter + 6] = ads1278_get_raw_acc_gyro_temp(&debug_data[counter + 0], &debug_data[counter + 1],
-    //    &debug_data[counter + 2], &debug_data[counter + 3], &debug_data[counter + 4], &debug_data[counter + 5]);
-    //counter += 7;
-
-    debug_data[counter + 6] = iam_20680ht_get_raw_acc_gyro_temp(&debug_data[counter + 0], &debug_data[counter + 1],
-                              &debug_data[counter + 2], &debug_data[counter + 3], &debug_data[counter + 4], &debug_data[counter + 5]);
-    counter += 7;
-
-    // 使用全局变量inc_hs_data
-    extern inclination_hs_t inc_hs_data;
-    debug_data[counter + 0] = inc_hs_data.inc1;
-    debug_data[counter + 1] = inc_hs_data.inc2;
-    debug_data[counter + 2] = inc_hs_data.inc3;
-    counter += 3;
-
-    LPUART1_send((uint8_t*)debug_data, counter << 2);
-    LPUART1_send((uint8_t*)&tail_flag, 4);
-#endif
-}
 
 /**
   *******************************************************************************
@@ -528,7 +446,6 @@ static void on_100ms_timer_event(void)
     // RTC相关静态变量 25/08/31 Gordon
     static uint32_t device_usage_time = 0;   // 设备运行时间计数器
     static uint32_t log_period = 0;         // 日志记录周期计数器，当其递增到algorithm_setting.log_period_time时，记录一条日志
-    static uint32_t time_count = 0;
 
     gz_avg += sensor_data.gz_dps;
     avg_count++;
@@ -536,19 +453,8 @@ static void on_100ms_timer_event(void)
     // 启动ADC，获取36V电压
     start_and_get_adc_result();
 
-    // 获取震动状态 - 使用新的GPIO振动检测函数
-    uint8_t vibration_status = check_gpio_vibration();
-    
-    // 将局部变量值赋给全局变量，供其他函数使用
-    current_vibration_status = vibration_status;
-
-    // 注释掉原来的调用
-    // checking_vibrating_gpio();
-    
-    // 根据振动状态和旋转状态更新开泵状态
-    // 振动状态为1表示开泵中，振动状态为0表示停泵中
-    // 修改：振动状态判断需要或上旋转状态（振动OR旋转）
-    pumping = (vibration_status == 1) || algorithm_data.rotating;
+    // 开泵状态：使用IAM20680振动+旋转判断（algorithm_data.drilling = 振动 OR 旋转）
+    pumping = algorithm_data.drilling;
 
     //1.记录日志
     log_period++; 
@@ -668,29 +574,6 @@ static void on_100ms_timer_event(void)
         accumulate_pump_off_inc();
     }
     previous_pumping = pumping;
-    // 打印GPIO振动开关状态、钻进状态、旋转状态、振动状态、Z轴陀螺仪数据、泥浆脉冲定时器计数、静态井斜、动态井斜、实时温度、实时高边和实时电池电压
-    uint8_t temp_data[200];
-    memset(temp_data, 0xFF, sizeof(temp_data));
-    inclination_hs_t hs;
-    get_inc_hs(&hs);
-    int n = sprintf((char*)temp_data,"GPIO_VIB:%d DRILL:%d ROTATE:%d PUMP:%d GZ_DPS:%.2f mud_pulse_timer_counter:%d mud_pulse_timer_counter_for_static_data=%d pump_off_real_inc=%f,pump_on_inc=%f,sensor_data.t_C=%f,hs.hs_lpf=%f,vSupply=%f\r\n",
-                    current_vibration_status,
-                    algorithm_data.drilling,
-                    algorithm_data.rotating,
-                    pumping,
-                    sensor_data.gz_dps,
-                    mud_pulse_timer_counter,
-                    mud_pulse_timer_counter_for_static_data,
-                    fabs(pump_off_real_inc) > 8.0f ? 8.0f:pump_off_real_inc,
-                    fabs(inc_hs_data.good_inc) > 8.0f ? 8.0f:fabs(inc_hs_data.good_inc),
-                    sensor_data.t_C,
-                    hs.hs_lpf,
-                    vSupply);
-    time_count++;
-    if(time_count==10){
-        time_count = 0;
-        LPUART2_send(temp_data, n);
-    }
 }
 
 /**
@@ -775,7 +658,6 @@ void accumulate_pump_off_inc(void)
 void record_log_to_flash(void)
 {
     // 日志记录相关局部变量
-    int32_t ret;
     log_t log = {0};
     uint32_t timestamp;
     uint8_t rtc_data[8];
@@ -798,7 +680,7 @@ void record_log_to_flash(void)
     log.timestamp = timestamp;
     log.ax = sensor_data.ax_g;
     log.ay = sensor_data.ay_g;
-    log.az = sensor_data.az_g;
+    log.az = - sensor_data.az_g;
     log.gx = sensor_data.gx_dps;
     log.gy = sensor_data.gy_dps;
     log.gz = sensor_data.gz_dps;
@@ -843,22 +725,37 @@ void record_log_to_flash(void)
     // 电压数据
     log.s_f32_36V = vSupply;
 
-    // 振动标志位：编码钻进状态、旋转状态和GPIO振动状态
-    // bit 0: 钻进状态 (1=钻进中, 0=静态)
-    // bit 1: 旋转状态 (1=旋转中, 0=不旋转)
-    // bit 2: GPIO振动状态 (1=检测到振动, 0=未检测到振动)
-    // bit 3-31: 保留位
+    // 振动标志位：编码钻进状态、旋转状态和振动状态（均来自IAM20680）
+    //
+    // drilling、rotating、vibrating 的 bit 位说明：
+    // +----------+--------+--------+--------------------------------------------------+
+    // | 变量名   | bit位  | 掩码   | 含义                                            |
+    // +----------+--------+--------+--------------------------------------------------+
+    // | drilling | bit 0  | 0x01   | 钻进状态：1=钻进中，0=静态 (=rotating||vibrating) |
+    // | rotating | bit 1  | 0x02   | 旋转状态：1=旋转中，0=不旋转（来自gz陀螺仪）      |
+    // | vibrating| bit 2  | 0x04   | 振动状态：1=有振动，0=无振动（来自ax/ay/az标准差）|
+    // | 保留     | bit3-31| -      | 保留位                                          |
+    // +----------+--------+--------+--------------------------------------------------+
+    //
+    // log.flag 取值及含义：
+    // +----------+--------+----------+----------+----------+------------------+
+    // | log.flag | 二进制  | drilling | rotating | vibrating| 含义              |
+    // +----------+--------+----------+----------+----------+------------------+
+    // |    0     | 0b000  |    0     |    0     |    0     | 静态              |
+    // |    3     | 0b011  |    1     |    1     |    0     | 旋转钻进          |
+    // |    5     | 0b101  |    1     |    0     |    1     | 振动钻进          |
+    // |    7     | 0b111  |    1     |    1     |    1     | 旋转+振动钻进     |
+    // +----------+--------+----------+----------+----------+------------------+
     log.flag = 0;
-    if (algorithm_data.drilling) {
-        SET_DRILLING_FLAG(log.flag);  // 设置钻进状态位
-    }
     if (algorithm_data.rotating) {
         SET_ROTATING_FLAG(log.flag);  // 设置旋转状态位
     }
-
-    // 使用全局变量中的GPIO振动状态设置标志位（避免重复调用振动检测函数）
-    if (current_vibration_status == 1) {
-        SET_GPIO_VIBRATION_FLAG(log.flag);  // 设置GPIO振动状态位
+    if (algorithm_data.vibrating) {
+        SET_GPIO_VIBRATION_FLAG(log.flag);  // 设置振动状态位（bit 2，来自IAM20680）
+    }
+    // 钻进状态由旋转或振动推导，与 update_drilling_status 逻辑一致，避免竞态导致非法组合(drilling=1但rotating=0,vibrating=0)
+    if (algorithm_data.rotating || algorithm_data.vibrating) {
+        SET_DRILLING_FLAG(log.flag);  // 设置钻进状态位
     }
 
     reset_interval_info();
@@ -868,8 +765,7 @@ void record_log_to_flash(void)
     avg_count = 0;
 
     // 写入日志到Flash，返回值：0-成功，-1-日志写入失败，-2-日志上下文更新失败，-3-FLASH_INITED_FLAG恢复失败
-    if ((ret = is25pl032_flash_write_one_log(&log)) != 0)
-        printf("Writing ONE log failed! ret=%d\r\n", ret);
+    is25pl032_flash_write_one_log(&log);
 }
 
 
@@ -1009,9 +905,6 @@ void main_task(void *p)
     main_task_handle = xTaskGetCurrentTaskHandle();
     uint32_t start_ticket = xTaskGetTickCount();
 
-    lpuart1_rx_timer = xTimerCreate("lpuart_rx_timer", 10, 0, 0, timer_lpuart1_rx_cb);
-    lpuart2_rx_timer = xTimerCreate("lpuart2_rx_timer", 10, 0, 0, lpuart2_rx_timer_cb);
-
     init_on_board_peripheral();
 
     // 加载配置
@@ -1058,26 +951,17 @@ void main_task(void *p)
             break; // 20秒后退出等待循环，进入井下模式
         }
 
+        /* 地面模式：UART2 仅处理寻北仪数据 */
         if (notify & EVENT_UART2_RX)
-        {
-            if (waiting_for_uart2_timeout_tmr)
-            {
-                xTimerDelete(waiting_for_uart2_timeout_tmr, 0);
-                waiting_for_uart2_timeout_tmr = 0;
-            }
-
-            handle_uart_msg(UART2_rx_buffer, &UART2_rx_data_len);
-        }
+            process_uart2_north_seeking_rx();
 
         if (notify & EVENT_TIMER_100MS)
         {
             PCA8565_on_timer_event();
         }
-        if (notify & EVENT_UART1_RX)
-            handle_uart_msg(UART1_rx_buffer, &UART1_rx_data_len);
+        if (notify & EVENT_HOST_RX)
+            handle_uart_msg(UART0_rx_buffer, &UART0_rx_data_len);
     }
-
-    xTimerStart(xTimerCreate("timer_send_dbg_data_cb", 100, 1, 0, timer_send_dbg_data_cb), 1000);
 
     // 初始化泥浆脉冲，执行双脉冲阶段设置传输
     pulser_tx_buffer_len = 0;
@@ -1090,7 +974,7 @@ void main_task(void *p)
     pulser_start_tx(pulser_tx_buffer, pulser_tx_buffer_len);
 
     // Enter main loop（井下模式）
-    printf("Enter main loop!\r\n");
+    /* printf("Enter main loop!\r\n"); */
     for (;;)
     {
         uint32_t notify;
@@ -1099,10 +983,9 @@ void main_task(void *p)
         if (notify & EVENT_TIMER_100MS)
             on_100ms_timer_event();
 
-        if (notify & EVENT_SEND_DBG_DATA_TIMER)
-        {
-            on_send_debug_data_event();
-        }
+        /* 井下：UART2 仅处理寻北仪数据 */
+        if (notify & EVENT_UART2_RX)
+            process_uart2_north_seeking_rx();
     }
 }
 
@@ -1198,35 +1081,3 @@ void send_cutter_valve_test_pulse(uint8_t test_type)
     // 启动脉冲发送
     pulser_start_tx(pulser_tx_buffer, pulser_tx_buffer_len);
 }
-
-// ==================== 振动检测相关函数 ====================
-/**
- *******************************************************************************
- * @Description: GPIO振动检测函数
- * @Parameters : 无
- * @RetValue   : 振动状态（1-检测到振动，0-未检测到振动）
- * @Note       : 使用移位寄存器方式检测GPIO状态变化
- *               检测PTA12引脚状态，连续8次高电平表示振动
- * @CreatedBy  : Assistant
- * @CreatedDate: 2025.01.27
- *******************************************************************************
- */
-static uint8_t check_gpio_vibration(void)
-{
-    static uint8_t gpio_state = 0;
-    
-    // 移位寄存器方式检测GPIO状态变化
-    gpio_state <<= 1;
-    if (PINS_DRV_ReadPins(PTA) & (0x1 << 12))
-        gpio_state |= 1;
-    
-    // 连续8次高电平表示振动，连续8次低电平表示无振动
-    if (gpio_state == 0xff)
-        return 1;  // 检测到振动
-    else if (gpio_state == 0)
-        return 0;  // 未检测到振动
-    
-    // 保持之前的状态
-    return (gpio_state & 0x80) ? 1 : 0;
-}
-

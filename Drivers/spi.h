@@ -27,8 +27,7 @@ int32_t spi1_init(void);
 int32_t spi2_init(void);
 void spi2_register_end_transfer_cb(void (*cb)(void));
 int32_t spi0_cs0_transfer(uint8_t* send_buff, uint8_t* receive_buff, uint32_t len);
-int32_t spi0_cs1_transfer(uint8_t* send_buff, uint8_t* receive_buff, uint32_t len);
-int32_t spi0_cs2_transfer(uint8_t* send_buff, uint8_t* receive_buff, uint32_t len);
+void spi1_transfer(uint8_t cs_num, uint8_t* send_buff, uint8_t* receive_buff, uint32_t len);
 
 #ifdef __cplusplus
 }

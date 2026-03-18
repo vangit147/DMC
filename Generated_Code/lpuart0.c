@@ -53,7 +53,7 @@
 const lpuart_user_config_t lpuart0_InitConfig0 =
 {
     .transferType = LPUART_USING_DMA,
-    .baudRate = 1500000U,
+    .baudRate = 115200U,
     .parityMode = LPUART_PARITY_DISABLED,
     .stopBitCount = LPUART_ONE_STOP_BIT,
     .bitCountPerChar = LPUART_8_BITS_PER_CHAR,

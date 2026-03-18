@@ -25,11 +25,9 @@ extern "C" {
 int32_t LPUART0_init(void (*tx_cb)(uint32_t), void (*rx_cb)(uint32_t, uint32_t));
 int32_t LPUART0_send(uint8_t* data, uint32_t len);
 
-int32_t LPUART1_init(void (*tx_cb)(uint32_t), void (*rx_cb)(uint32_t, uint32_t));
-int32_t LPUART1_send(uint8_t* data, uint32_t len);
-
 int32_t LPUART2_init(void (*tx_cb)(uint32_t), void (*rx_cb)(uint32_t, uint32_t));
 int32_t LPUART2_deinit(void);
+
 int32_t LPUART2_send(uint8_t* data, uint32_t len);
 
 #ifdef __cplusplus

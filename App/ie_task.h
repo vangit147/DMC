@@ -91,7 +91,8 @@ typedef struct {
 
     /* 钻进状态相关 */
     bool drilling;                       /* 钻进状态标志：1表示在钻进，0表示静态（既不振动也不旋转） */
-    bool rotating;                       /* 独立旋转状态标志：1表示在旋转，0表示不旋转，可配合第三方振动开关来判断*/
+    bool rotating;                       /* 独立旋转状态标志：1表示在旋转，0表示不旋转（来自IAM20680陀螺仪gz） */
+    bool vibrating;                      /* 独立振动状态标志：1表示在振动，0表示未振动（来自IAM20680加速度ax/ay/az标准差） */
 } algorithm_info_t;
 
 // 算法设置结构体

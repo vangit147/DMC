@@ -26,7 +26,6 @@ extern "C" {
 #include <time.h>
 
 #include "../version.h"
-#include "adxl357.h"
 #include "device_registers.h"
 #include "system_S32K144.h"
 #include "cpu.h"
@@ -51,6 +50,7 @@ extern "C" {
 #include "uart_service.h"
 #include "main_task.h"
 #include "ie_task.h"
+#include "north_seeking_protocol.h"
 
 #include "common.h"
 #include "quick_sort.h"

@@ -290,7 +290,7 @@ static void adxl357_data_ready_isr(uint32_t int_flag)
   */
 void adxl357_verify_configuration(void)
 {
-    printf("=== ADXL357 Configuration Verification ===\r\n");
+    /* printf("=== ADXL357 Configuration Verification ===\r\n"); */
     uint8_t power_ctl = adxl357_read_reg(REG_POWER_CTL);
     uint8_t filter = adxl357_read_reg(REG_FILTER);
     uint8_t range = adxl357_read_reg(REG_RANGE);
@@ -324,28 +324,28 @@ void adxl357_verify_configuration(void)
             break;
     }
 
-    printf("POWER_CTL: 0x%02X - %s\r\n", power_ctl, power_mode);
-    printf("RANGE: 0x%02X - %s\r\n", range, range_name);
-    printf("FIFO_SAMPLES: 0x%02X (%d bytes, max 96 bytes)\r\n", fifo_samples, fifo_samples);
+    /* printf("POWER_CTL: 0x%02X - %s\r\n", power_ctl, power_mode); */
+    /* printf("RANGE: 0x%02X - %s\r\n", range, range_name); */
+    /* printf("FIFO_SAMPLES: 0x%02X (%d bytes, max 96 bytes)\r\n", fifo_samples, fifo_samples); */
 
     // 解析中断映射配置
-    printf("INT_MAP: 0x%02X - ", int_map);
+    /* printf("INT_MAP: 0x%02X - ", int_map); */
     if(int_map & INT_MAP_DATA_RDY) {
-        printf("DATA_READY ");
+        /* printf("DATA_READY "); */
     }
     if(int_map & INT_MAP_FIFO_FULL) {
-        printf("FIFO_FULL ");
+        /* printf("FIFO_FULL "); */
     }
     if(int_map & INT_MAP_FIFO_OVR) {
-        printf("FIFO_OVR ");
+        /* printf("FIFO_OVR "); */
     }
     if(int_map & INT_MAP_ACT) {
-        printf("ACT ");
+        /* printf("ACT "); */
     }
     if(int_map == 0x00) {
-        printf("No interrupts mapped");
+        /* printf("No interrupts mapped"); */
     }
-    printf("\r\n");
+    /* printf("\r\n"); */
 
     // 计算FIFO满时间：每组数据9字节，FIFO_SAMPLES设置的是字节数
     uint8_t data_groups = fifo_samples / 9;  // 每组数据9字节
@@ -356,20 +356,20 @@ void adxl357_verify_configuration(void)
     if(odr_period_ms_float < 1.0f) {
         // 小于1ms，使用浮点型显示
         float fifo_full_time_ms_float = (float)data_groups * odr_period_ms_float;
-        printf("ODR Configuration: %s (0x%02X), Period: %.3f ms per data group\r\n", odr_name, filter & 0x0F, odr_period_ms_float);
-        printf("FIFO Configuration: %d bytes = %d data groups\r\n", fifo_samples, data_groups);
-        printf("Expected FIFO full time: %.2f ms (%d data groups * %.3f ms per group)\r\n",
-               fifo_full_time_ms_float, data_groups, odr_period_ms_float);
+        /* printf("ODR Configuration: %s (0x%02X), Period: %.3f ms per data group\r\n", odr_name, filter & 0x0F, odr_period_ms_float); */
+        /* printf("FIFO Configuration: %d bytes = %d data groups\r\n", fifo_samples, data_groups); */
+        /* printf("Expected FIFO full time: %.2f ms (%d data groups * %.3f ms per group)\r\n",
+               fifo_full_time_ms_float, data_groups, odr_period_ms_float); */
     } else {
         // 大于等于1ms，转换为整型显示
         uint32_t odr_period_ms = (uint32_t)odr_period_ms_float;  // 直接转换为整型毫秒
         uint32_t fifo_full_time_ms = data_groups * odr_period_ms;  // 毫秒为单位（整型）
-        printf("ODR Configuration: %s (0x%02X), Period: %lu ms per data group\r\n", odr_name, filter & 0x0F, odr_period_ms);
-        printf("FIFO Configuration: %d bytes = %d data groups\r\n", fifo_samples, data_groups);
-        printf("Expected FIFO full time: %lu ms (%d data groups * %lu ms per group)\r\n",
-               fifo_full_time_ms, data_groups, odr_period_ms);
+        /* printf("ODR Configuration: %s (0x%02X), Period: %lu ms per data group\r\n", odr_name, filter & 0x0F, odr_period_ms); */
+        /* printf("FIFO Configuration: %d bytes = %d data groups\r\n", fifo_samples, data_groups); */
+        /* printf("Expected FIFO full time: %lu ms (%d data groups * %lu ms per group)\r\n",
+               fifo_full_time_ms, data_groups, odr_period_ms); */
     }
-    printf("=== Configuration Verification End ===\r\n");
+    /* printf("=== Configuration Verification End ===\r\n"); */
 }
 
 /**

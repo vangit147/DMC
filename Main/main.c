@@ -20,8 +20,8 @@
 #include "pin_mux.h"
 
 #include "lpuart_driver.h"
-#include "lpuart1.h"
-/* [YangHaifeng 2023.09.20 23:37:27 Wed] */
+/* 将 UART0 接收的字节转发给主任务处理上位机命令 */
+extern void main_task_uart0_rx_from_isr(uint32_t data);
 extern uint32_t __initial_sp;
 uint32_t    __DATA_ROM;
 uint32_t    __RAM_START = 0x20000000;
@@ -54,6 +54,9 @@ static void lpuart0_tx_cb(uint32_t uartHandle)
   */
 static void lpuart0_rx_cb(uint32_t uartHandle, uint32_t data)
 {
+    (void)uartHandle;
+    /* 上位机可以通过 UART0 发送文本命令，复用 UART1 的命令解析逻辑 */
+    main_task_uart0_rx_from_isr(data);
 }
 
 /**
@@ -91,10 +94,10 @@ void vApplicationIdleHook(void)
   */
 __weak void main_task(void* p)
 {
-    uint32_t    counter = 0;
+//    uint32_t    counter = 0;
     for(;;)
     {
-        printf("CN: %d\r\n", counter++);
+        /* printf("CN: %d\r\n", counter++); */
         vTaskDelay(1000);
     }
 }
@@ -155,9 +158,8 @@ int32_t main(void)
                   edmaChnStateArray, edmaChnConfigArray, EDMA_CONFIGURED_CHANNELS_COUNT);
 
     LPUART0_init(lpuart0_tx_cb, lpuart0_rx_cb);
-
-    printf("\r\n\r\nStarting system...\r\nVersion: v%d.%d\nBuilding: %s %s\r\nCPU Clock: %dHz\r\n", MAJOR_VERSION,
-           MINOR_VERSION, __DATE__, __TIME__, SystemCoreClock);
+    /* printf("\r\n\r\nStarting system...\r\nVersion: v%d.%d\nBuilding: %s %s\r\nCPU Clock: %dHz\r\n", MAJOR_VERSION,
+           MINOR_VERSION, __DATE__, __TIME__, SystemCoreClock); */
 
     start_init_task("main_task", main_task, TASK_PRIORITY_MAIN_TASK, 1024 * 2);
     return 0;
@@ -173,11 +175,13 @@ int32_t main(void)
   * @CreatedDate: 2023.09.18 21:57:55 Monday
   *******************************************************************************
   */
+//标准库 printf 不再通过 UART0 输出，保留此处供以后需要时参考
 int fputc(int ch, FILE* f)
 {
-    while(LPUART0_send((uint8_t*)&ch, 1) == 0);
+    //while (LPUART0_send((uint8_t*)&ch, 1) == 0);
     return 1;
 }
+
 /**
   *******************************************************************************
   * @Description:
@@ -273,7 +277,7 @@ int print_buff(const void * v_addr, unsigned int size, const char* func, int lin
     unsigned int i;
     unsigned char* addr = (unsigned char*)v_addr;
 
-    printf("-----%s  line:%d-----\r\n", func, line);
+    /* printf("-----%s  line:%d-----\r\n", func, line); */
     while(size)
     {
         unsigned int current_len;
@@ -304,7 +308,7 @@ int print_buff(const void * v_addr, unsigned int size, const char* func, int lin
         out_buff[64 + i + 1] = 0x0d;
         out_buff[64 + i + 2] = 0x0a;
         out_buff[64 + i + 3] = 0x0;
-        printf("%s", out_buff);
+        /* printf("%s", out_buff); */
     }
     return 0;
 }

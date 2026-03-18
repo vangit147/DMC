@@ -53,10 +53,10 @@ static void ads1278_update_global_vars(void)
 
     
     // 更新原始数据结构体
-    s_ads1278_global_raw_data.ay_raw = adc_raw_data[0];
+    s_ads1278_global_raw_data.ay_raw = adc_raw_data[2];
     s_ads1278_global_raw_data.ax_raw = adc_raw_data[1];
-    s_ads1278_global_raw_data.az_raw = adc_raw_data[3];
-    s_ads1278_global_raw_data.t_raw = adc_raw_data[2];
+    s_ads1278_global_raw_data.az_raw = adc_raw_data[0];
+    s_ads1278_global_raw_data.t_raw = adc_raw_data[3];
 
 }
 
@@ -75,7 +75,9 @@ static void ads1278_end_data_transfer(void)
     uint8_t     convert_buffer[32];
     uint8_t     *p_uint8;
 
-    PINS_DRV_SetPinIntSel(READY_PORT_GROUP, READY_PIN_NUMBER, PORT_INT_FALLING_EDGE);
+    // 先禁用中断，避免在处理数据时再次触发中断
+    //PINS_DRV_SetPinIntSel(READY_PORT_GROUP, READY_PIN_NUMBER, PORT_DMA_INT_DISABLED);
+	PINS_DRV_SetPinIntSel(READY_PORT_GROUP, READY_PIN_NUMBER, PORT_INT_FALLING_EDGE);
 
     //32bit
     for(int i = 0; i < 8; i++)
@@ -100,6 +102,8 @@ static void ads1278_end_data_transfer(void)
         adc_raw_data[i] = ret;
     }
     
+    // 处理完数据后重新使能中断，准备接收下一次数据
+   // PINS_DRV_SetPinIntSel(READY_PORT_GROUP, READY_PIN_NUMBER, PORT_INT_FALLING_EDGE);
 
 }
 
@@ -156,7 +160,7 @@ static int32_t ads1278_start_SYNC(void)
 static int32_t ads1278_init(void)
 {
     spi2_register_end_transfer_cb(ads1278_end_data_transfer);
-    gpio_portc_register_cb(ads1278_data_ready_isr);
+    gpio_portc_register_cb(READY_PIN_NUMBER,ads1278_data_ready_isr);
 
     ads1278_start_SYNC();
     return 0;
@@ -198,6 +202,7 @@ static void ads1278_task(void* p)
 
         if(notify & EVENT_ADS1278_10MS_TIMER)
         {
+            ads1278_end_data_transfer();
             ads1278_update_global_vars();
         }
     }

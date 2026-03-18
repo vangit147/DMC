@@ -183,7 +183,7 @@ void PCA8565_on_timer_event(void)
 
     if(status != STATUS_SUCCESS)
     {
-        printf("I2C busy!\r\n");
+        /* printf("I2C busy!\r\n"); */
     }
 }
 

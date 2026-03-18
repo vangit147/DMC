@@ -6,7 +6,7 @@
 #include "string.h"
 #include "main.h"
 
-uint16_t Lib_ModbusCrc(uint8_t *data, uint16_t len);
+uint16_t Lib_ModbusCrc(void *data, uint16_t len);
 void* fast_memcpy(void*, void *, uint32_t);
 void swap(void *p, uint32_t len);
 float naive_variance(float* sample, int32_t num);
