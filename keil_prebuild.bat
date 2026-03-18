@@ -128,6 +128,10 @@ if /I "%BRANCH_BASE:~0,9%"=="HIGH_SIDE" (
     goto :eof
 )
 for /f "tokens=1 delims=_" %%p in ("%BRANCH_BASE%") do (
+    if /I "%%p"=="IM01" (
+        set VERSION_PREFIX=IM01
+        goto :eof
+    )
     if /I "%%p"=="TG" (
         set VERSION_PREFIX=TG
         goto :eof
